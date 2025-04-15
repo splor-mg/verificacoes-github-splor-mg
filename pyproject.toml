@@ -7,6 +7,8 @@ authors = ["gabrielbdornas <gabrielbdornas@example.com>"]
 [tool.poetry.dependencies]
 python = "^3.8"
 PyGithub = "^1.55"
+python-dotenv = "^1.0"
+ipdb = "^0.13.13"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
