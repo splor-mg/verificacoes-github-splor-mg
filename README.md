@@ -1,0 +1,1 @@
+## Verificações GitHub splor-mg

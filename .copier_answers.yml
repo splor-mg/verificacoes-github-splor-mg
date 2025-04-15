@@ -1,0 +1,6 @@
+# Changes here will be overwritten by Copier
+_commit: '3064054'
+_src_path: gh:meadapt/copipy
+keep_project_dir_name: 'yes'
+keep_project_scripts_dir_name: 'yes'
+project_name: Verificações GitHub splor-mg
