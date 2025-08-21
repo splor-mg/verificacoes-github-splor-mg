@@ -1,5 +1,6 @@
 # Configuração de Labels para GitHub
-# Baseado na interface de gerenciamento de labels
+# Labels padrão para a organização GitHub
+# Este arquivo é usado pelo script repos_list.py para sincronizar labels
 
 labels:
   # Labels de Tipo

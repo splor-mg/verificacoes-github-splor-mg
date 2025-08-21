@@ -1,0 +1,190 @@
+name: labels-update
+
+on:
+  #schedule:
+  #  - cron: '0 11,19 * * *'  # At 11:00 and 19:00 UTC every day
+  workflow_dispatch:
+    inputs:
+      organization:
+        description: 'Organization name to sync labels for'
+        required: true
+        default: 'bazingas-lab'
+
+jobs:
+  sync-labels:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Get organization repositories
+        id: get_repos
+        run: |
+          repos=$(gh repo list ${{ inputs.organization }} --json nameWithOwner -q '.[].nameWithOwner' | tr '\n' ' ')
+          echo "repos=$repos" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT_CLH }}
+
+      - name: Sync Labels for each repository
+        run: |
+          # Read labels template
+          labels_template=$(cat docs/labels-template)
+          
+          # Process each repository
+          IFS=' ' read -ra REPOS <<< "${{ steps.get_repos.outputs.repos }}"
+          for repo in "${REPOS[@]}"; do
+            echo "Processing repository: $repo"
+            
+            # Create or update labels
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              if [[ -n "$line" ]]; then
+                # Extract name (first field before :)
+                name=$(echo "$line" | cut -d: -f1)
+                
+                # Extract color (last field after last :)
+                color=$(echo "$line" | rev | cut -d: -f1 | rev | tr -d ' ' | tr -d '\r')
+                
+                # Extract description (everything between first and last :)
+                description=$(echo "$line" | cut -d: -f2- | rev | cut -d: -f2- | rev | sed 's/^ *//;s/ *$//')
+                
+                echo "Updating label: $name"
+                echo "Description: $description"
+                echo "Color: $color"
+                
+                # First try to update existing label
+                if ! gh api -X PATCH "repos/$repo/labels/$(printf '%s' "$name" | jq -s -R -r @uri)" \
+                  -f name="$name" \
+                  -f description="$description" \
+                  -f color="$color" 2>/dev/null; then
+                  # If update fails, try creating new label
+                  echo "Creating new label: $name"
+                  gh api -X POST "repos/$repo/labels" \
+                    -f name="$name" \
+                    -f description="$description" \
+                    -f color="$color" || true
+                fi
+              fi
+            done <<< "$labels_template"
+            
+            # Get current labels
+            current_labels=$(gh api "repos/$repo/labels" 2>/dev/null | jq -r '.[].name' || echo "")
+            
+            # Build list of template label names
+            template_labels=""
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              if [[ -n "$line" ]]; then
+                name=$(echo "$line" | cut -d: -f1)
+                template_labels="${template_labels}${template_labels:+ }${name}"
+              fi
+            done <<< "$labels_template"
+            
+            # Debug information
+            echo "Template labels: $template_labels"
+            echo "Current labels: $current_labels"
+            
+            # Delete labels not in template
+            while IFS= read -r label || [[ -n "$label" ]]; do
+              # Skip empty lines
+              if [[ -z "$label" ]]; then
+                continue
+              fi
+              
+              # Check if label exists in template
+              if ! echo "$template_labels" | grep -q "\b$label\b"; then
+                echo "Deleting label: $label"
+                gh api -X DELETE "repos/$repo/labels/$(printf '%s' "$label" | jq -s -R -r @uri)" || true
+              else
+                echo "Keeping label: $label"
+              fi
+            done <<< "$current_labels"
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT_CLH }}
+
+name: labels-update
+
+on:
+  #schedule:
+  #  - cron: '0 11,19 * * *'  # At 11:00 and 19:00 UTC every day
+  workflow_dispatch:
+    inputs:
+      organization:
+        description: 'Organization name to sync labels for'
+        required: true
+        default: 'bazingas-lab'
+
+jobs:
+  sync-labels:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      GITHUB_ORG: ${{ github.event.inputs.organization }}
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+
+      - name: Activate Poetry environment
+        run: |
+          echo "POETRY_VENV_PATH=$(poetry env info --path)" >> $GITHUB_ENV
+          echo "$(poetry env info --path)/bin" >> $GITHUB_PATH
+
+      - name: Get organization repositories
+        id: get_repos
+        run: |
+          python scripts/repos_list.py
+          echo "✅ Repositórios obtidos com sucesso"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Sync Labels for all repositories
+        run: |
+          python scripts/labels_sync.py
+          echo "✅ Labels sincronizadas com sucesso"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update repository list and sync labels [skip ci]"
+            git push
+          fi
