@@ -1,0 +1,14 @@
+name: Labels Update
+
+on:
+  workflow_dispatch:
+
+jobs:
+  hello:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say Hello
+        run: |
+          echo "Hello from branch: ${{ github.ref_name }}"
+          echo "Hello from workflow dispatch!"
+          echo "✅ Workflow executed successfully"
