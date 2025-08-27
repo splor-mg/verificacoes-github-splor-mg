@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Script para sincronizar labels em todos os repositórios de uma organização GitHub.
-Lê a lista de repositórios do arquivo docs/repos_list.csv e aplica as labels
-definidas em docs/labels.yaml.
+Script para sincronizar labels em repositórios GitHub.
+Pode sincronizar todos os repositórios de uma organização ou um repositório específico.
 """
 
 import requests
@@ -10,12 +9,41 @@ import csv
 import yaml
 import os
 import time
+import argparse
 from datetime import datetime
 
-# Configurações caso 
+# Configurações padrão
 organization = 'splor-mg'
 repos_file = 'docs/repos_list.csv'
 labels_file = 'docs/labels.yaml'
+
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description="Sincroniza labels em repositórios GitHub",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Exemplos de uso:
+  python labels_sync.py                    # Sincroniza todos os repositórios da organização
+  python labels_sync.py --repo org/repo   # Sincroniza repositório específico
+  python labels_sync.py --org nova-org    # Usa organização diferente
+  python labels_sync.py --no-delete       # Não remove labels extras
+        """
+    )
+    
+    parser.add_argument('--repo', 
+                       help='Repositório específico para sincronizar (formato: org/repo)')
+    parser.add_argument('--org', 
+                       help='Organização para sincronizar (padrão: splor-mg)')
+    parser.add_argument('--no-delete', 
+                       action='store_true',
+                       help='Não remove labels extras')
+    parser.add_argument('--csv', 
+                       help='Arquivo CSV com lista de repositórios (padrão: docs/repos_list.csv)')
+    parser.add_argument('--labels', 
+                       help='Arquivo YAML com labels (padrão: docs/labels.yaml)')
+    
+    return parser.parse_args()
 
 def load_env():
     """Carrega variáveis de ambiente do arquivo .env"""
@@ -95,7 +123,14 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=T
         current_response = requests.get(current_labels_url, headers=headers)
         if current_response.status_code == 200:
             current_labels = current_response.json()
-            current_label_names = {label['name'] for label in current_labels}
+            # Criar mapeamento case-insensitive das labels existentes
+            current_labels_map = {}
+            for label in current_labels:
+                current_labels_map[label['name'].lower()] = {
+                    'name': label['name'],
+                    'color': label['color'],
+                    'description': label.get('description', '')
+                }
             print(f"    📊 {len(current_labels)} labels encontradas no repositório")
         else:
             print(f"    ❌ Erro ao obter labels atuais: {current_response.status_code}")
@@ -104,7 +139,7 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=T
         print(f"    ❌ Erro ao obter labels atuais: {e}")
         return 0, 0, 1
     
-    # Processar cada label do arquivo YAML
+    # Processar cada label do template
     for label in labels:
         label_name = label['name']
         label_color = label['color']
@@ -112,66 +147,94 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=T
         
         print(f"  🏷️  Processando label: {label_name}")
         
-        try:
-            # Tentar atualizar a label existente
-            update_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels/{label_name}"
-            update_data = {
-                'color': label_color,
-                'description': label_description
-            }
+        # Verificar se a label já existe (case-insensitive)
+        label_name_lower = label_name.lower()
+        if label_name_lower in current_labels_map:
+            existing_label = current_labels_map[label_name_lower]
+            existing_name = existing_label['name']
+            existing_color = existing_label['color']
+            existing_description = existing_label['description']
             
-            response = requests.patch(update_url, headers=headers, json=update_data)
+            # Verificar se precisa atualizar (nome, cor ou descrição)
+            needs_update = (
+                existing_name != label_name or
+                existing_color != label_color or
+                existing_description != label_description
+            )
             
-            if response.status_code == 200:
-                print(f"      ✅ Label '{label_name}' atualizada com sucesso")
-                success_count += 1
-            elif response.status_code == 404:
-                # Label não existe, criar nova
-                create_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels"
-                create_data = {
+            if needs_update:
+                # Log específico para ajuste de formato
+                if existing_name != label_name:
+                    print(f"      🔄 Ajustando formato do nome da label: '{existing_name}' → '{label_name}'")
+                
+                # Atualizar label existente
+                update_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels/{existing_name}"
+                update_data = {
                     'name': label_name,
                     'color': label_color,
                     'description': label_description
                 }
                 
-                create_response = requests.post(create_url, headers=headers, json=create_data)
-                
-                if create_response.status_code == 201:
+                try:
+                    response = requests.patch(update_url, headers=headers, json=update_data)
+                    if response.status_code == 200:
+                        print(f"      ✅ Label '{label_name}' atualizada com sucesso")
+                        success_count += 1
+                    else:
+                        print(f"      ❌ Erro ao atualizar label '{label_name}': {response.status_code}")
+                        error_count += 1
+                except Exception as e:
+                    print(f"      ❌ Erro ao atualizar label '{label_name}': {e}")
+                    error_count += 1
+            else:
+                print(f"      ✅ Label '{label_name}' já está atualizada")
+                success_count += 1
+        else:
+            # Criar nova label
+            create_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels"
+            create_data = {
+                'name': label_name,
+                'color': label_color,
+                'description': label_description
+            }
+            
+            try:
+                response = requests.post(create_url, headers=headers, json=create_data)
+                if response.status_code == 201:
                     print(f"      ✅ Label '{label_name}' criada com sucesso")
                     success_count += 1
                 else:
-                    print(f"      ❌ Erro ao criar label '{label_name}': {create_response.status_code}")
+                    print(f"      ❌ Erro ao criar label '{label_name}': {response.status_code}")
                     error_count += 1
-            else:
-                print(f"      ❌ Erro ao atualizar label '{label_name}': {response.status_code}")
+            except Exception as e:
+                print(f"      ❌ Erro ao criar label '{label_name}': {e}")
                 error_count += 1
-                
-        except Exception as e:
-            print(f"      ❌ Erro ao processar label '{label_name}': {e}")
-            error_count += 1
         
         # Pequena pausa para não sobrecarregar a API
         time.sleep(0.1)
     
-    # Identificar e deletar labels extras que não estão no arquivo YAML
+    # Remover labels extras se habilitado
     if delete_extras:
         print("  🗑️  Verificando labels extras para remoção...")
-        yaml_label_names = {label['name'] for label in labels}
-        labels_to_delete = current_label_names - yaml_label_names
         
-        if labels_to_delete:
-            print(f"    📋 {len(labels_to_delete)} labels extras encontradas para remoção")
+        # Obter labels que não estão no template (case-insensitive)
+        template_label_names_lower = {label['name'].lower() for label in labels}
+        extra_labels = [name for name in current_labels_map.keys() if name not in template_label_names_lower]
+        
+        if extra_labels:
+            print(f"    📋 {len(extra_labels)} labels extras encontradas para remoção")
             
-            for extra_label_name in labels_to_delete:
+            for extra_label_name_lower in extra_labels:
+                extra_label_name = current_labels_map[extra_label_name_lower]['name']
+                delete_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels/{extra_label_name}"
+                
                 try:
-                    delete_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels/{extra_label_name}"
-                    delete_response = requests.delete(delete_url, headers=headers)
-                    
-                    if delete_response.status_code == 204:
+                    response = requests.delete(delete_url, headers=headers)
+                    if response.status_code == 204:
                         print(f"      🗑️  Label '{extra_label_name}' removida com sucesso")
                         deleted_count += 1
                     else:
-                        print(f"      ❌ Erro ao remover label '{extra_label_name}': {delete_response.status_code}")
+                        print(f"      ❌ Erro ao remover label '{extra_label_name}': {response.status_code}")
                         error_count += 1
                     
                     # Pequena pausa para não sobrecarregar a API
@@ -188,27 +251,28 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=T
     print(f"  📊 Resumo: {success_count} labels processadas, {deleted_count} deletadas, {error_count} erros")
     return success_count, deleted_count, error_count
 
-def sync_repository_labels(organization, repo_name, token, labels_file, delete_extras=True):
-    """Sincroniza labels para um repositório específico"""
-    print(f"🔄 Sincronizando labels para repositório: {organization}/{repo_name}")
-    
-    # Carregar labels do arquivo YAML
-    labels = load_labels_from_yaml(labels_file)
-    if not labels:
-        print("❌ Não foi possível carregar as labels do arquivo YAML")
+def sync_single_repo(repo_full_name, labels, token, delete_extras=True):
+    """Sincroniza labels para um repositório específico (formato: org/repo)"""
+    if '/' not in repo_full_name:
+        print(f"❌ Formato inválido: {repo_full_name}. Use: org/repo")
         return False
     
-    # Sincronizar labels para o repositório
-    success, deleted, errors = sync_labels_for_repo(repo_name, labels, token, organization, delete_extras)
+    org, repo = repo_full_name.split('/', 1)
+    print(f"🎯 Sincronizando repositório específico: {org}/{repo}")
+    
+    success, deleted, errors = sync_labels_for_repo(repo, labels, token, org, delete_extras)
     
     if errors == 0:
-        print(f"✅ Labels sincronizadas com sucesso para {organization}/{repo_name}")
+        print(f"✅ Labels sincronizadas com sucesso para {org}/{repo}")
         return True
     else:
-        print(f"⚠️  Sincronização concluída com {errors} erros para {organization}/{repo_name}")
+        print(f"⚠️  Sincronização concluída com {errors} erros para {org}/{repo}")
         return False
 
 def main():
+    # Parse arguments
+    args = parse_arguments()
+    
     # Carregar variáveis de ambiente
     load_env()
     
@@ -222,14 +286,27 @@ def main():
     
     print(f"🔑 Usando token: {github_token[:8]}...")
     
-    # Carregar repositórios
-    repos = load_repos_from_csv(repos_file)
-    if not repos:
-        return
+    # Configurar parâmetros baseado nos argumentos
+    if args.org:
+        organization = args.org
+    if args.csv:
+        repos_file = args.csv
+    if args.labels:
+        labels_file = args.labels
     
     # Carregar labels
     labels = load_labels_from_yaml(labels_file)
     if not labels:
+        return
+    
+    # Se foi especificado um repositório específico
+    if args.repo:
+        sync_single_repo(args.repo, labels, github_token, not args.no_delete)
+        return
+    
+    # Carregar repositórios do CSV
+    repos = load_repos_from_csv(repos_file)
+    if not repos:
         return
     
     print(f"\n🚀 Iniciando sincronização de labels para {len(repos)} repositórios...")
@@ -243,7 +320,7 @@ def main():
     for i, repo in enumerate(repos, 1):
         print(f"\n📁 Repositório {i}/{len(repos)}")
         
-        success, deleted, errors = sync_labels_for_repo(repo, labels, github_token, organization, delete_extras=True)
+        success, deleted, errors = sync_labels_for_repo(repo, labels, github_token, organization, not args.no_delete)
         total_success += success
         total_deleted += deleted
         total_errors += errors

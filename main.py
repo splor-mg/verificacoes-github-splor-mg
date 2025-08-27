@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from typing import Optional, List
 from scripts.repos_list import sync_organization_labels, get_github_repos, export_to_csv
-from scripts.labels_sync import sync_repository_labels
+from scripts.labels_sync import sync_labels_for_repo
 
 DEFAULT_ORG = 'splor-mg'
 DEFAULT_LABELS_FILE = 'docs/labels.yaml'
@@ -166,6 +166,14 @@ Exemplos de uso:
             try:
                 print(f"\n🏷️  Sincronizando labels nos repositórios da organização: {config['github_org']}")
                 
+                # Carregar labels do arquivo YAML
+                from scripts.labels_sync import load_labels_from_yaml
+                labels = load_labels_from_yaml(config['labels_file'])
+                if not labels:
+                    print("❌ Não foi possível carregar as labels")
+                    success = False
+                    return
+                
                 # Informa sobre o comportamento de deleção
                 if args.no_delete_extras:
                     print("⚠️  Modo conservador: labels extras NÃO serão removidas")
@@ -187,11 +195,11 @@ Exemplos de uso:
                             
                         try:
                             print(f"🔄 Sincronizando {repo['name']}...")
-                            sync_repository_labels(
-                                config['github_org'],
+                            sync_labels_for_repo(
                                 repo['name'],
+                                labels,
                                 config['github_token'],
-                                config['labels_file'],
+                                config['github_org'],
                                 delete_extras=not args.no_delete_extras
                             )
                             success_count += 1

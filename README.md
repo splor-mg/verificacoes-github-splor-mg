@@ -1,3 +1,4 @@
+
 # Verificações GitHub SPLOR-MG
 
 Scripts para extrair e sincronizar informações de organizações GitHub.
@@ -49,17 +50,17 @@ GITHUB_TOKEN=seu_token_aqui
 GITHUB_ORG=nome_da_organizacao
 ```
 
-1. **Gerar token GitHub** em: Settings → Developer settings → Personal access tokens
+2. **Gerar token GitHub** em: Settings → Developer settings → Personal access tokens
    - Escopo: `repo` (para acesso aos repositórios)
    - Escopo: `admin:org` (para gerenciar labels organizacionais)
 
-1. **Secrets necessários:**
+3. **Secrets necessários:**
    - **Organização**: Para repositórios públicos com o nome GH_TOKEN
    - **Repositório**: Para repositórios privados com o nome GH_TOKEN
 
 ## ⚠️ Alerta Importante sobre Labels
 
-**ATENÇÃO**: Ao atualizar o nome de uma label existente (por exemplo, alterar de "bug" para "bugs"), a label será **automaticamente removida de todos os issues** onde estava aplicada.
+**ATENÇÃO**: Se eventualmente alguém atualizar manualmente o nome de uma label existente (por exemplo, alterar de "bug" para "bugs") sem alterar as default-labels em 'docs/labels.yml', quando os scripts de sincronização de labels deste repositório rodarem, o nome da label  "bugs" retornará para "bug" e será **automaticamente removida de todos os issues** onde estava aplicada.
 
 **O que acontece quando você altera:**
 
@@ -72,6 +73,8 @@ GITHUB_ORG=nome_da_organizacao
 1. Criar uma nova label com o nome desejado
 2. Aplicar a nova label nos issues que tinham a label antiga
 3. Remover a label antiga apenas após a migração
+4. Atualizar o template `docs/labels.yaml` com o novo nome da label
+5. Executar os protocolos de sincronização (`poetry run python main.py --sync-repos`)
 
 ## Instalação
 
