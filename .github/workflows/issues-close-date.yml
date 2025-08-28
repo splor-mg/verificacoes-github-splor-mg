@@ -1,0 +1,54 @@
+name: issue-closed-sync
+
+on:
+  issues:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      project_number:
+        description: "Project number (as in the URL)"
+        required: true
+        default: "13"
+      field_name:
+        description: "Project Date field to set"
+        required: true
+        default: "Data Fim"
+
+jobs:
+  set-end-date:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      GITHUB_ORG: ${{ github.repository_owner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Sync Project field on issue close
+        run: |
+          poetry run python scripts/issues_sync.py \
+            --org "$GITHUB_ORG" \
+            --project-number ${{ inputs.project_number || 13 }} \
+            --field-name "${{ inputs.field_name || 'Data Fim' }}" \
+            --issue-node-id "${{ github.event.issue.node_id }}" \
+            --closed-at "${{ github.event.issue.closed_at }}"
+
+

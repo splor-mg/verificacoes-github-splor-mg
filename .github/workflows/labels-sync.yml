@@ -1,4 +1,4 @@
-name: labels-update
+name: labels-sync
 
 on:
   #schedule:
