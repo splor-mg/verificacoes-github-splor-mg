@@ -78,7 +78,9 @@ Exemplos de uso:
   python main.py --sync-repos                  # Sincroniza labels nos repositórios
   python main.py --all                         # Executa todas as operações
   python main.py --verbose                     # Modo verboso
-  python main.py --sync-repos --no-delete-extras  # Sincroniza sem deletar labels extras
+  python main.py --sync-repos --delete-extras  # Sincroniza e remove labels extras
+  python main.py --org minha-org --repos repo1,repo2  # Sincroniza organização e repositórios específicos
+  python main.py --labels /caminho/labels.yaml  # Usa arquivo de labels customizado
         """
     )
     
@@ -93,8 +95,11 @@ Exemplos de uso:
                        help='Executa todas as operações')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Modo verboso com mais detalhes')
-    parser.add_argument('--no-delete-extras', action='store_true',
-                       help='Não deleta labels extras (apenas adiciona/atualiza)')
+    parser.add_argument('--delete-extras', action='store_true',
+                       help='Deleta labels extras para manter 100% sincronizado')
+    parser.add_argument('--org', type=str, help='Organização específica para sincronizar')
+    parser.add_argument('--repos', type=str, help='Repositórios específicos (CSV ou lista separada por vírgula)')
+    parser.add_argument('--labels', type=str, help='Arquivo de labels customizado')
     
     args = parser.parse_args()
     
@@ -108,6 +113,12 @@ Exemplos de uso:
     
     # Carrega configurações
     config = load_environment()
+    
+    # Aplica argumentos da linha de comando (maior prioridade)
+    if args.org:
+        config['github_org'] = args.org
+    if args.labels:
+        config['labels_file'] = args.labels
     
     # Valida configuração
     if not validate_config(config):
@@ -175,12 +186,22 @@ Exemplos de uso:
                     return
                 
                 # Informa sobre o comportamento de deleção
-                if args.no_delete_extras:
-                    print("⚠️  Modo conservador: labels extras NÃO serão removidas")
+                if args.delete_extras:
+                    print("🗑️  Modo completo: labels extras serão removidas automaticamente")
                 else:
-                    print("🗑️  Modo completo: labels extras serão removidas automaticamente (padrão)")
+                    print("⚠️  Modo conservador: labels extras NÃO serão removidas (padrão)")
                 
-                repos = get_github_repos(config['github_org'], config['github_token'])
+                # Carrega repositórios (específicos ou todos)
+                if args.repos:
+                    from scripts.labels_sync import load_repos
+                    repos = load_repos(args.repos, config['github_org'])
+                    if not repos:
+                        print("❌ Nenhum repositório encontrado na lista especificada")
+                        success = False
+                        return
+                    print(f"🎯 Sincronizando {len(repos)} repositórios específicos")
+                else:
+                    repos = get_github_repos(config['github_org'], config['github_token'])
                 
                 if not repos:
                     print("❌ Nenhum repositório encontrado para sincronizar")
@@ -200,7 +221,7 @@ Exemplos de uso:
                                 labels,
                                 config['github_token'],
                                 config['github_org'],
-                                delete_extras=not args.no_delete_extras
+                                delete_extras=args.delete_extras
                             )
                             success_count += 1
                         except Exception as e:

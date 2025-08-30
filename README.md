@@ -98,13 +98,13 @@ poetry install
   - `labels.yaml`: Template de labels padrão
   - `repos_list.csv`: Lista de repositórios (gerado automaticamente)
 - **`.github/workflows/`**: Workflows GitHub Actions para automação
-  - `labels-update.yml`: Sincronização automática de labels
+  - `labels-sync.yml`: Sincronização automática de labels
 
 ## Uso via GitHub Actions
 
 O projeto inclui um workflow que pode ser executado manualmente para sincronizar labels:
 
 1. Vá para a aba "Actions"
-2. Selecione "labels-update"
+2. Selecione "labels-sync"
 3. Clique em "Run workflow"
 4. Escolha a organização e execute
