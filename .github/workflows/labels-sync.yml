@@ -1,0 +1,112 @@
+name: labels-sync
+
+on:
+  #schedule:
+  #  - cron: '0 11,19 * * *'  # At 11:00 and 19:00 UTC every day
+  workflow_dispatch:
+    inputs:
+      organization:
+        description: 'Organization name to sync labels for'
+        required: true
+        default: 'splor-mg'
+      delete-extras:
+        description: 'Delete extras labels'
+        required: false
+        default: 'não'
+        type: choice
+        options:
+          - 'sim'
+          - 'não'
+
+jobs:
+  sync-labels:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      GITHUB_ORG: ${{ github.event.inputs.organization }}
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+
+      - name: Activate Poetry environment
+        run: |
+          echo "POETRY_VENV_PATH=$(poetry env info --path)" >> $GITHUB_ENV
+          echo "$(poetry env info --path)/bin" >> $GITHUB_PATH
+
+      - name: Get organization repositories
+        id: get_repos
+        run: |
+          echo "🔍 Obtendo repositórios da organização: ${{ inputs.organization }}"
+          
+          # Usar main.py para listar repositórios e gerar CSV
+          poetry run python main.py --list-repos
+          
+          # Verificar se o CSV foi gerado
+          if [ -f "docs/repos_list.csv" ]; then
+            echo "✅ Lista de repositórios atualizada com sucesso"
+          else
+            echo "❌ Arquivo CSV não foi gerado"
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_ORG: ${{ inputs.organization }}
+
+      - name: Sync Labels for all repositories
+        run: |
+          echo "🚀 Iniciando sincronização de labels para organização: ${{ inputs.organization }}"
+          
+          # Determinar se deve deletar labels extras
+          if [ "${{ inputs.delete-extras }}" = "sim" ]; then
+            echo "🗑️  Modo: Sincronizar labels E deletar labels extras"
+            poetry run python main.py --sync-repos --delete-extras
+          else
+            echo "⏭️  Modo: Sincronizar labels SEM deletar labels extras (padrão)"
+            poetry run python main.py --sync-repos
+          fi
+          
+          echo "✅ Sincronização concluída para todos os repositórios"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_ORG: ${{ inputs.organization }}
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update repository list and sync labels for ${{ inputs.organization }} [skip ci]"
+            git push
+          fi

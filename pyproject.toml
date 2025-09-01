@@ -1,15 +1,77 @@
 [tool.poetry]
 name = "verificacoes-github-splor-mg"
 version = "0.1.0"
-description = "A tool to fetch and iterate over GitHub organization repositories and issues."
-authors = ["gabrielbdornas <gabrielbdornas@example.com>"]
+description = "GitHub Organization Management Tool"
+authors = ["splor-mg"]
+readme = "README.md"
+packages = [{include = "scripts", from = "."}]
 
 [tool.poetry.dependencies]
-python = "^3.8"
-PyGithub = "^1.55"
-python-dotenv = "^1.0"
-ipdb = "^0.13.13"
+python = "^3.8.1"
+requests = "^2.31.0"
+PyYAML = "^6.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+pytest-cov = "^4.0.0"
+black = "^23.0.0"
+flake8 = "^6.0.0"
+mypy = "^1.0.0"
+taskipy = "^1.14.1"
+
+[tool.poetry.scripts]
+github-org-manager = "main:main"
+
+[tool.taskipy.tasks]
+# Tasks para gerenciamento do GitHub
+all = { cmd = "python main.py --all", help = "Executa todas as operações: sincroniza organização, lista repositórios e sincroniza labels" }
+list-repos = { cmd = "python main.py --list-repos", help = "Lista todos os repositórios da organização e salva em docs/repos_list.csv" }
+sync-repos = { cmd = "python main.py --sync-repos", help = "Sincroniza labels em todos os repositórios da organização (modo conservador)" }
+sync-org = { cmd = "python main.py --sync-org", help = "Sincroniza labels padrão da organização GitHub" }
+verbose = { cmd = "python main.py --verbose", help = "Executa com logs detalhados e verbosos" }
+
+# Tasks de personalização avançada
+sync-org-custom = { cmd = "python main.py --org", help = "Sincroniza organização específica (use: task sync-org-custom minha-org)" }
+sync-repos-custom = { cmd = "python main.py --repos", help = "Sincroniza repositórios específicos (use: task sync-repos-custom repo1,repo2)" }
+sync-labels-custom = { cmd = "python main.py --labels", help = "Usa arquivo de labels customizado (use: task sync-labels-custom /caminho/labels.yaml)" }
+sync-delete-extras = { cmd = "python main.py --sync-repos --delete-extras", help = "Sincroniza labels e remove labels extras (modo completo)" }
+
+# Tasks de setup
+install-dev = "poetry install --with dev"
+update-deps = "poetry update"
+lock = "poetry lock"
+install = "poetry install"
+
+# Tasks de desenvolvimento
+dev = "python main.py --all --verbose"
+test = "pytest"
+test-cov = "pytest --cov=scripts --cov-report=html"
+format = "black ."
+lint = "flake8 ."
+type-check = "mypy ."
+check-all = "task format && task lint && task type-check && task test"
+
+# Tasks de limpeza
+clean = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && find . -type d -name '*.egg-info' -exec rm -rf {} +"
+clean-logs = "rm -f *.log"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+
+[tool.mypy]
+python_version = "3.8.1"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=scripts --cov-report=term-missing --cov-report=html"
