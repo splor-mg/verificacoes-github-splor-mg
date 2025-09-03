@@ -9,6 +9,14 @@ on:
         description: 'Organization name to sync labels for'
         required: true
         default: 'splor-mg'
+      delete-extras:
+        description: 'Delete extras labels'
+        required: false
+        default: 'não'
+        type: choice
+        options:
+          - 'sim'
+          - 'não'
 
 jobs:
   sync-labels:
@@ -77,8 +85,14 @@ jobs:
         run: |
           echo "🚀 Iniciando sincronização de labels para organização: ${{ inputs.organization }}"
           
-          # Usar main.py para sincronizar labels em todos os repositórios
-          poetry run python main.py --sync-repos
+          # Determinar se deve deletar labels extras
+          if [ "${{ inputs.delete-extras }}" = "sim" ]; then
+            echo "🗑️  Modo: Sincronizar labels E deletar labels extras"
+            poetry run python main.py --sync-repos --delete-extras
+          else
+            echo "⏭️  Modo: Sincronizar labels SEM deletar labels extras (padrão)"
+            poetry run python main.py --sync-repos
+          fi
           
           echo "✅ Sincronização concluída para todos os repositórios"
         env:

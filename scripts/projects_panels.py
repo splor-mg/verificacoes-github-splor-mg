@@ -8,12 +8,17 @@ as projects-panels.yml.
 
 Environment variables used:
 - GITHUB_TOKEN: GitHub token with read access to Projects v2
-- GITHUB_ORG: Organization login (default: aid-pilot)
+- GITHUB_ORG: Organization login (default: splor-mg)
 
 Usage:
   python scripts/projects_panels.py
   python scripts/projects_panels.py --org "organization-name"
   python scripts/projects_panels.py --output "custom-output.yml"
+
+Priorização de configuração:
+1. Argumento --org (maior prioridade)
+2. Variável GITHUB_ORG no arquivo .env
+3. Valor padrão hardcoded: splor-mg (menor prioridade)
 """
 
 from __future__ import annotations
@@ -24,24 +29,28 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
 import requests
 import yaml
+
+# Configurações padrão
+DEFAULT_ORG = 'splor-mg'
+DEFAULT_OUTPUT = 'docs/projects-panels.yml'
 
 # Load environment variables from .env file
 def load_dotenv():
     """Load environment variables from .env file."""
     env_file = Path('.env')
     if env_file.exists():
+        print(f"📁 Carregando variáveis de {env_file}...")
         with open(env_file, 'r') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
                     key, value = line.split('=', 1)
                     os.environ[key] = value
-
-# Load .env at module level
-load_dotenv()
+        print("✅ Variáveis de ambiente carregadas")
+    else:
+        print(f"⚠️  Arquivo {env_file} não encontrado")
 
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
@@ -220,22 +229,28 @@ def save_yaml(data: Dict[str, Any], output_path: str) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Extract GitHub ProjectV2 information and export to YAML"
+        description="Extract GitHub ProjectV2 information and export to YAML",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Exemplos de uso:
+  python scripts/projects_panels.py                               # Extrai projetos da organização padrão (splor-mg)
+  python scripts/projects_panels.py --org "minha-org"             # Extrai projetos de organização específica
+  python scripts/projects_panels.py --output "meus_projetos.yml"  # Arquivo de saída customizado
+  python scripts/projects_panels.py --verbose                     # Modo verboso com mais detalhes
+        """
     )
     parser.add_argument(
         "--org", 
-        default=os.getenv("GITHUB_ORG", "aid-pilot"),
-        help="Organization login (default: GITHUB_ORG env var or 'aid-pilot')"
+        help=f"Organization login (padrão: GITHUB_ORG env var ou '{DEFAULT_ORG}')"
     )
     parser.add_argument(
         "--output", 
-        default="docs/projects-panels.yml",
-        help="Output YAML file path (default: docs/projects-panels.yml)"
+        help=f"Output YAML file path (padrão: {DEFAULT_OUTPUT})"
     )
     parser.add_argument(
         "--verbose", "-v", 
         action="store_true",
-        help="Verbose output"
+        help="Modo verboso com mais detalhes"
     )
     return parser.parse_args()
 
@@ -244,29 +259,44 @@ def main() -> None:
     """Main function."""
     args = parse_args()
     
+    # Carregar variáveis de ambiente
+    load_dotenv()
+    
     # Get GitHub token
     token = os.getenv("GITHUB_TOKEN") or _require_env("GITHUB_TOKEN")
     
+    # Aplicar hierarquia de priorização (argumentos > env vars > padrões)
+    # 1. Argumentos da linha de comando (maior prioridade)
+    # 2. Variáveis de ambiente (prioridade média)
+    # 3. Valores padrão (menor prioridade)
+    
+    org = args.org or os.getenv("GITHUB_ORG") or DEFAULT_ORG
+    output = args.output or DEFAULT_OUTPUT
+    
     if args.verbose:
-        print(f"🔍 Extraindo projetos da organização: {args.org}")
-        print(f"📁 Arquivo de saída: {args.output}")
+        print(f"🔍 Extraindo projetos da organização: {org}")
+        print(f"📁 Arquivo de saída: {output}")
+        print(f"🔧 Configurações aplicadas:")
+        print(f"   Organização: {org}")
+        print(f"   Arquivo de saída: {output}")
+        print(f"   Token: {token[:8]}...")
     
     try:
         # Get all projects from organization
-        print(f"📊 Buscando projetos da organização '{args.org}'...")
-        projects = get_organization_projects(token, args.org)
+        print(f"📊 Buscando projetos da organização '{org}'...")
+        projects = get_organization_projects(token, org)
         
         if not projects:
-            print(f"⚠️  Nenhum projeto encontrado na organização '{args.org}'")
+            print(f"⚠️  Nenhum projeto encontrado na organização '{org}'")
             return
         
         print(f"✅ Encontrados {len(projects)} projetos")
         
         # Convert to YAML structure
-        yaml_data = projects_to_yaml_structure(projects, args.org)
+        yaml_data = projects_to_yaml_structure(projects, org)
         
         # Ensure output directory exists
-        output_path = Path(args.output)
+        output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Save to YAML file
@@ -274,7 +304,7 @@ def main() -> None:
         
         # Print summary
         print(f"\n📋 Resumo da extração:")
-        print(f"   Organização: {args.org}")
+        print(f"   Organização: {org}")
         print(f"   Total de projetos: {len(projects)}")
         
         total_fields = sum(len(p["fields"]) for p in yaml_data["projects"])

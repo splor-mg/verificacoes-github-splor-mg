@@ -25,21 +25,19 @@ def parse_arguments():
         epilog="""
 Exemplos de uso:
   python labels_sync.py                    # Sincroniza todos os repositórios da organização
-  python labels_sync.py --repo org/repo   # Sincroniza repositório específico
+  python labels_sync.py --repos repo1,repo2  # Sincroniza repositórios específicos
   python labels_sync.py --org nova-org    # Usa organização diferente
-  python labels_sync.py --no-delete       # Não remove labels extras
+  python labels_sync.py --delete-extras   # Remove labels extras para sincronização completa
         """
     )
     
-    parser.add_argument('--repo', 
-                       help='Repositório específico para sincronizar (formato: org/repo)')
+    parser.add_argument('--repos', 
+                       help='Repositórios específicos (CSV ou lista separada por vírgula)')
     parser.add_argument('--org', 
                        help='Organização para sincronizar (padrão: splor-mg)')
-    parser.add_argument('--no-delete', 
+    parser.add_argument('--delete-extras', 
                        action='store_true',
-                       help='Não remove labels extras')
-    parser.add_argument('--csv', 
-                       help='Arquivo CSV com lista de repositórios (padrão: docs/repos_list.csv)')
+                       help='Remove labels extras para manter 100% sincronizado')
     parser.add_argument('--labels', 
                        help='Arquivo YAML com labels (padrão: docs/labels.yaml)')
     
@@ -60,6 +58,37 @@ def load_env():
     else:
         print(f"⚠️  Arquivo {env_file} não encontrado")
 
+def load_repos(repos_input, organization):
+    """Carrega repositórios de CSV ou lista separada por vírgula"""
+    repos = []
+    
+    if ',' in repos_input:
+        # Lista separada por vírgula
+        repo_names = [repo.strip() for repo in repos_input.split(',')]
+        for repo_name in repo_names:
+            # Remove org/ se presente
+            if '/' in repo_name:
+                repo_name = repo_name.split('/')[-1]
+            repos.append({'name': repo_name, 'archived': False})
+        print(f"📋 Carregando {len(repos)} repositórios da lista: {repos_input}")
+    else:
+        # Arquivo CSV
+        csv_file = repos_input
+        if not os.path.exists(csv_file):
+            print(f"❌ Arquivo {csv_file} não encontrado!")
+            print("💡 Execute primeiro o script repos_list.py para gerar a lista")
+            return repos
+        
+        print(f"📋 Carregando repositórios de {csv_file}...")
+        
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                repos.append({'name': row['name'], 'archived': row.get('archived', 'False') == 'True'})
+    
+    print(f"✅ {len(repos)} repositórios carregados")
+    return repos
+
 def load_repos_from_csv(csv_file):
     """Carrega a lista de repositórios do arquivo CSV"""
     repos = []
@@ -74,7 +103,7 @@ def load_repos_from_csv(csv_file):
     with open(csv_file, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            repos.append(row['name'])
+            repos.append({'name': row['name'], 'archived': row.get('archived', 'False') == 'True'})
     
     print(f"✅ {len(repos)} repositórios carregados")
     return repos
@@ -123,7 +152,14 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=T
         current_response = requests.get(current_labels_url, headers=headers)
         if current_response.status_code == 200:
             current_labels = current_response.json()
-            current_label_names = {label['name'] for label in current_labels}
+            # Criar mapeamento case-insensitive das labels existentes
+            current_labels_map = {}
+            for label in current_labels:
+                current_labels_map[label['name'].lower()] = {
+                    'name': label['name'],
+                    'color': label['color'],
+                    'description': label.get('description', '')
+                }
             print(f"    📊 {len(current_labels)} labels encontradas no repositório")
         else:
             print(f"    ❌ Erro ao obter labels atuais: {current_response.status_code}")
@@ -140,27 +176,48 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=T
         
         print(f"  🏷️  Processando label: {label_name}")
         
-        # Verificar se a label já existe
-        if label_name in current_label_names:
-            # Atualizar label existente
-            update_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels/{label_name}"
-            update_data = {
-                'name': label_name,
-                'color': label_color,
-                'description': label_description
-            }
+        # Verificar se a label já existe (case-insensitive)
+        label_name_lower = label_name.lower()
+        if label_name_lower in current_labels_map:
+            existing_label = current_labels_map[label_name_lower]
+            existing_name = existing_label['name']
+            existing_color = existing_label['color']
+            existing_description = existing_label['description']
             
-            try:
-                response = requests.patch(update_url, headers=headers, json=update_data)
-                if response.status_code == 200:
-                    print(f"      ✅ Label '{label_name}' atualizada com sucesso")
-                    success_count += 1
-                else:
-                    print(f"      ❌ Erro ao atualizar label '{label_name}': {response.status_code}")
+            # Verificar se precisa atualizar (nome, cor ou descrição)
+            needs_update = (
+                existing_name != label_name or
+                existing_color != label_color or
+                existing_description != label_description
+            )
+            
+            if needs_update:
+                # Log específico para ajuste de formato
+                if existing_name != label_name:
+                    print(f"      🔄 Ajustando formato do nome da label: '{existing_name}' → '{label_name}'")
+                
+                # Atualizar label existente
+                update_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels/{existing_name}"
+                update_data = {
+                    'name': label_name,
+                    'color': label_color,
+                    'description': label_description
+                }
+                
+                try:
+                    response = requests.patch(update_url, headers=headers, json=update_data)
+                    if response.status_code == 200:
+                        print(f"      ✅ Label '{label_name}' atualizada com sucesso")
+                        success_count += 1
+                    else:
+                        print(f"      ❌ Erro ao atualizar label '{label_name}': {response.status_code}")
+                        error_count += 1
+                except Exception as e:
+                    print(f"      ❌ Erro ao atualizar label '{label_name}': {e}")
                     error_count += 1
-            except Exception as e:
-                print(f"      ❌ Erro ao atualizar label '{label_name}': {e}")
-                error_count += 1
+            else:
+                print(f"      ✅ Label '{label_name}' já está atualizada")
+                success_count += 1
         else:
             # Criar nova label
             create_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels"
@@ -189,14 +246,15 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=T
     if delete_extras:
         print("  🗑️  Verificando labels extras para remoção...")
         
-        # Obter labels que não estão no template
-        template_label_names = {label['name'] for label in labels}
-        extra_labels = current_label_names - template_label_names
+        # Obter labels que não estão no template (case-insensitive)
+        template_label_names_lower = {label['name'].lower() for label in labels}
+        extra_labels = [name for name in current_labels_map.keys() if name not in template_label_names_lower]
         
         if extra_labels:
             print(f"    📋 {len(extra_labels)} labels extras encontradas para remoção")
             
-            for extra_label_name in extra_labels:
+            for extra_label_name_lower in extra_labels:
+                extra_label_name = current_labels_map[extra_label_name_lower]['name']
                 delete_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels/{extra_label_name}"
                 
                 try:
@@ -260,8 +318,6 @@ def main():
     # Configurar parâmetros baseado nos argumentos
     if args.org:
         organization = args.org
-    if args.csv:
-        repos_file = args.csv
     if args.labels:
         labels_file = args.labels
     
@@ -270,15 +326,17 @@ def main():
     if not labels:
         return
     
-    # Se foi especificado um repositório específico
-    if args.repo:
-        sync_single_repo(args.repo, labels, github_token, not args.no_delete)
-        return
-    
-    # Carregar repositórios do CSV
-    repos = load_repos_from_csv(repos_file)
-    if not repos:
-        return
+    # Se foi especificado repositórios específicos
+    if args.repos:
+        repos = load_repos(args.repos, organization)
+        if not repos:
+            return
+        print(f"🎯 Sincronizando {len(repos)} repositórios específicos")
+    else:
+        # Carregar repositórios do CSV padrão
+        repos = load_repos(repos_file, organization)
+        if not repos:
+            return
     
     print(f"\n🚀 Iniciando sincronização de labels para {len(repos)} repositórios...")
     print("=" * 60)
@@ -291,7 +349,7 @@ def main():
     for i, repo in enumerate(repos, 1):
         print(f"\n📁 Repositório {i}/{len(repos)}")
         
-        success, deleted, errors = sync_labels_for_repo(repo, labels, github_token, organization, not args.no_delete)
+        success, deleted, errors = sync_labels_for_repo(repo, labels, github_token, organization, args.delete_extras)
         total_success += success
         total_deleted += deleted
         total_errors += errors
@@ -311,8 +369,10 @@ def main():
     
     if total_errors == 0:
         print("🎉 Todas as labels foram sincronizadas com sucesso!")
-        if total_deleted > 0:
+        if args.delete_extras and total_deleted > 0:
             print(f"🗑️  {total_deleted} labels extras foram removidas para manter consistência")
+        elif not args.delete_extras:
+            print("🛡️  Modo conservador: labels extras foram preservadas")
     else:
         print("⚠️  Algumas labels tiveram problemas. Verifique os logs acima.")
     

@@ -1,3 +1,25 @@
+
+Na organização que trabalho foram criados vários projetos (https://github.com/orgs/minha-organização/projects).
+Em alguns desses projetos foi criado um campo chamado "Data Fim". 
+
+
+Eu quero criar um script para verificar o preenchimento desse campo "Data Fim" para os projetos desejados e nos quais o referido campo "Data Fim" existir. Vamos chamar a lista de projetos desejados/escolhidos como "PROJETOS_ESCOLHIDOS". 
+
+Eu quero que o script verifique os issues de cada um dos repositórios listados em @repos_list.csv e, para aqueles issues que estejam associados a pelo menos um do(s) PROJETOS_ESCOLHIDOS, e nesses projetos exista o campo "Data Fim", eu quero que o script faça o seguinte:
+
+ - caso o status do issue no projeto esteja diferente de "Done", eu quero que o campo "Data Fim" esteja vazio; se não estiver vazio, que apague o conteúdo dele
+ - caso o status do issue no projeto esteja como "Done" e o campo "Data Fim" esteja em branco, eu quero que o campo "Data Fim" seja preenchido com a mesma data de fechamento do issue em questão
+ - eu quero que o script faça o print as alterações que foram feitas
+
+
+
+DEFAULT_ORG
+DEFAULT_REPOS_FILE
+DEFAULT_PROJECTS_FILE
+DEFAULT_FIELD_NAME
+
+
+
 Analisando o issues_close_date.py e o main.py, vejo que seria interessante integrar a funcionalidade de sincronização de datas de fechamento. Aqui estão os comandos que eu sugeriria adicionar ao main.py:
 
 ## 🆕 **Novos comandos para integrar:**

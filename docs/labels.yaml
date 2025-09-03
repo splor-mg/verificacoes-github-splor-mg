@@ -1,5 +1,5 @@
-# Configuração de Labels para GitHub
 # Labels padrão para a organização GitHub
+# Configuração de Labels para GitHub -> https://github.com/organizations/MINHA-ORGANIZACAO/settings/repository-defaults
 # Este arquivo é usado pelo script repos_list.py para sincronizar labels
 
 labels:

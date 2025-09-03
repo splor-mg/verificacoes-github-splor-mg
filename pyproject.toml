@@ -24,11 +24,17 @@ github-org-manager = "main:main"
 
 [tool.taskipy.tasks]
 # Tasks para gerenciamento do GitHub
-all = "python main.py --all" # Sincroniza todas as labels
-list-repos = "python main.py --list-repos" # Lista os repositórios do GitHub
-sync-repos = "python main.py --sync-repos" # Sincroniza as labels dos repositórios
-sync-org = "python main.py --sync-org" # Sincroniza as labels padrão do GitHub
-verbose = "python main.py --verbose" # Exibe logs detalhados
+all = { cmd = "python main.py --all", help = "Executa todas as operações: sincroniza organização, lista repositórios e sincroniza labels" }
+list-repos = { cmd = "python main.py --list-repos", help = "Lista todos os repositórios da organização e salva em docs/repos_list.csv" }
+sync-repos = { cmd = "python main.py --sync-repos", help = "Sincroniza labels em todos os repositórios da organização (modo conservador)" }
+sync-org = { cmd = "python main.py --sync-org", help = "Sincroniza labels padrão da organização GitHub" }
+verbose = { cmd = "python main.py --verbose", help = "Executa com logs detalhados e verbosos" }
+
+# Tasks de personalização avançada
+sync-org-custom = { cmd = "python main.py --org", help = "Sincroniza organização específica (use: task sync-org-custom minha-org)" }
+sync-repos-custom = { cmd = "python main.py --repos", help = "Sincroniza repositórios específicos (use: task sync-repos-custom repo1,repo2)" }
+sync-labels-custom = { cmd = "python main.py --labels", help = "Usa arquivo de labels customizado (use: task sync-labels-custom /caminho/labels.yaml)" }
+sync-delete-extras = { cmd = "python main.py --sync-repos --delete-extras", help = "Sincroniza labels e remove labels extras (modo completo)" }
 
 # Tasks de setup
 install-dev = "poetry install --with dev"
