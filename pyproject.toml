@@ -36,6 +36,22 @@ sync-repos-custom = { cmd = "python main.py --repos", help = "Sincroniza reposit
 sync-labels-custom = { cmd = "python main.py --labels", help = "Usa arquivo de labels customizado (use: task sync-labels-custom /caminho/labels.yaml)" }
 sync-delete-extras = { cmd = "python main.py --sync-repos --delete-extras", help = "Sincroniza labels e remove labels extras (modo completo)" }
 
+# Tasks para projetos GitHub
+projects-panels = { cmd = "python main.py --projects-panels", help = "Atualiza dados completos dos projetos GitHub (projects-panels.yml)" }
+projects-list = { cmd = "python main.py --projects-list", help = "Atualiza lista de projetos GitHub (projects-panels-list.yml)" }
+projects-update = { cmd = "python main.py --projects-panels --projects-list", help = "Atualiza ambos os arquivos de projetos" }
+
+# Tasks para issues e campos de data
+issues-close-date = { cmd = "python main.py --issues-close-date", help = "Gerencia campo Data Fim em projetos GitHub" }
+issues-panel = { cmd = "python main.py --issues-panel", help = "Seleção interativa de projetos para gerenciar issues" }
+issues-projects = { cmd = "python main.py --issues-projects", help = "Gerencia issues em projetos específicos (use: task issues-projects 1,2,3)" }
+issues-field = { cmd = "python main.py --issues-field", help = "Usa campo customizado para issues (use: task issues-field 'Data Conclusão')" }
+update-workflow-options = { cmd = "python scripts/update_workflow_options.py", help = "Atualiza opções de projetos no workflow GitHub Actions dinamicamente" }
+
+# Tasks combinadas
+projects-and-issues = { cmd = "python main.py --projects-panels --issues-panel", help = "Atualiza projetos e gerencia issues com seleção interativa" }
+full-workflow = { cmd = "python main.py --all --projects-panels --issues-panel", help = "Executa workflow completo: labels, repositórios, projetos e issues" }
+
 # Tasks de setup
 install-dev = "poetry install --with dev"
 update-deps = "poetry update"

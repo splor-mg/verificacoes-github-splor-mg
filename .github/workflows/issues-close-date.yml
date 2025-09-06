@@ -5,10 +5,29 @@ on:
     types: [closed]
   workflow_dispatch:
     inputs:
-      project_number:
-        description: "Project number (as in the URL)"
+      update_project_list:
+        description: 'Atualizar lista de projetos antes de executar?'
+        required: false
+        default: 'não'
+        type: choice
+        options:
+          - 'sim'
+          - 'não'
+      organization:
+        description: 'Organization name to sync issues for'
         required: true
-        default: "13"
+        default: 'aid-pilot'
+      project_number:
+        description: "Project to sync issues for"
+        required: true
+        default: "13 - Gestão à Vista AID"
+        type: choice
+        options:
+          - "13 - Gestão à Vista AID"
+          - "1 - Gestão à Vista Pilot"
+          - "2 - [TEMPLATE] Gestão à Vista AID"
+          - "3 - Gestão à Vista Pilot 2"
+
       field_name:
         description: "Project Date field to set"
         required: true
@@ -18,14 +37,16 @@ jobs:
   set-end-date:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       issues: read
     env:
       GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-      GITHUB_ORG: ${{ github.repository_owner }}
+      GITHUB_ORG: ${{ inputs.organization }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -39,16 +60,94 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
+
       - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
 
-      - name: Sync Project field on issue close
+      - name: Activate Poetry environment
         run: |
-          poetry run python scripts/issues_sync.py \
-            --org "$GITHUB_ORG" \
-            --project-number ${{ inputs.project_number || 13 }} \
-            --field-name "${{ inputs.field_name || 'Data Fim' }}" \
-            --issue-node-id "${{ github.event.issue.node_id }}" \
-            --closed-at "${{ github.event.issue.closed_at }}"
+          echo "POETRY_VENV_PATH=$(poetry env info --path)" >> $GITHUB_ENV
+          echo "$(poetry env info --path)/bin" >> $GITHUB_PATH
+
+      - name: Update projects data
+        if: inputs.update_project_list == 'sim'
+        run: |
+          echo "🔄 Atualizando dados dos projetos..."
+          poetry run python main.py --projects-panels --projects-list
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_ORG: ${{ inputs.organization }}
+
+      - name: Update workflow options dynamically
+        if: inputs.update_project_list == 'sim'
+        run: |
+          echo "🔄 Atualizando opções de projetos dinamicamente..."
+          poetry run python scripts/update_workflow_options.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_ORG: ${{ inputs.organization }}
+
+      - name: Commit and push project updates
+        if: inputs.update_project_list == 'sim'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/ .github/workflows/issues-close-date.yml
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update project options for ${{ inputs.organization }} [skip ci]"
+            git push
+          fi
+
+      - name: Stop workflow after project update
+        if: inputs.update_project_list == 'sim'
+        run: |
+          echo "✅ Lista de projetos atualizada com sucesso!"
+          echo "💡 Execute o workflow novamente com 'Atualizar lista de projetos' = 'Não' para gerenciar issues"
+          exit 0
+
+      - name: Extract project number from selection
+        if: inputs.update_project_list == 'não'
+        id: extract_project
+        run: |
+          # Extrair número do projeto da seleção (ex: "1 - Gestão à Vista Pilot" -> "1")
+          PROJECT_SELECTION="${{ inputs.project_number }}"
+          PROJECT_NUMBER=$(echo "$PROJECT_SELECTION" | cut -d' ' -f1)
+          echo "project_number=$PROJECT_NUMBER" >> $GITHUB_OUTPUT
+          echo "Selected project: $PROJECT_SELECTION (Number: $PROJECT_NUMBER)"
+
+      - name: Sync Project field on issue close
+        if: inputs.update_project_list == 'não'
+        run: |
+          echo "🔧 Gerenciando campo '${{ inputs.field_name }}' para projeto ${{ steps.extract_project.outputs.project_number }}"
+          poetry run python main.py \
+            --issues-close-date \
+            --issues-projects "${{ steps.extract_project.outputs.project_number }}" \
+            --issues-field "${{ inputs.field_name }}" \
+            --org "${{ inputs.organization }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_ORG: ${{ inputs.organization }}
+
+      - name: Commit and push changes
+        if: inputs.update_project_list == 'não'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update projects data for ${{ inputs.organization }} [skip ci]"
+            git push
+          fi
 
 

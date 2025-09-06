@@ -35,6 +35,7 @@ import yaml
 # Configurações padrão
 DEFAULT_ORG = 'splor-mg'
 DEFAULT_OUTPUT = 'docs/projects-panels.yml'
+DEFAULT_LIST_OUTPUT = 'docs/projects-panels-list.yml'
 
 # Load environment variables from .env file
 def load_dotenv():
@@ -218,6 +219,24 @@ def projects_to_yaml_structure(projects: List[Dict[str, Any]], org: str) -> Dict
     return yaml_structure
 
 
+def projects_to_list_structure(projects: List[Dict[str, Any]], org: str) -> Dict[str, Any]:
+    """Convert projects data to simple list structure with numbers, names and IDs."""
+    list_structure = {
+        "org": org,
+        "projects": []
+    }
+    
+    for project in projects:
+        project_entry = {
+            "number": project["number"],
+            "name": project["title"],
+            "id": project["id"]
+        }
+        list_structure["projects"].append(project_entry)
+    
+    return list_structure
+
+
 def save_yaml(data: Dict[str, Any], output_path: str) -> None:
     """Save data to YAML file."""
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -236,6 +255,7 @@ Exemplos de uso:
   python scripts/projects_panels.py                               # Extrai projetos da organização padrão (splor-mg)
   python scripts/projects_panels.py --org "minha-org"             # Extrai projetos de organização específica
   python scripts/projects_panels.py --output "meus_projetos.yml"  # Arquivo de saída customizado
+  python scripts/projects_panels.py --list-output "lista.yml"     # Arquivo de lista customizado
   python scripts/projects_panels.py --verbose                     # Modo verboso com mais detalhes
         """
     )
@@ -246,6 +266,10 @@ Exemplos de uso:
     parser.add_argument(
         "--output", 
         help=f"Output YAML file path (padrão: {DEFAULT_OUTPUT})"
+    )
+    parser.add_argument(
+        "--list-output", 
+        help=f"Output list YAML file path (padrão: {DEFAULT_LIST_OUTPUT})"
     )
     parser.add_argument(
         "--verbose", "-v", 
@@ -272,13 +296,16 @@ def main() -> None:
     
     org = args.org or os.getenv("GITHUB_ORG") or DEFAULT_ORG
     output = args.output or DEFAULT_OUTPUT
+    list_output = args.list_output or DEFAULT_LIST_OUTPUT
     
     if args.verbose:
         print(f"🔍 Extraindo projetos da organização: {org}")
         print(f"📁 Arquivo de saída: {output}")
+        print(f"📋 Arquivo de lista: {list_output}")
         print(f"🔧 Configurações aplicadas:")
         print(f"   Organização: {org}")
         print(f"   Arquivo de saída: {output}")
+        print(f"   Arquivo de lista: {list_output}")
         print(f"   Token: {token[:8]}...")
     
     try:
@@ -294,18 +321,25 @@ def main() -> None:
         
         # Convert to YAML structure
         yaml_data = projects_to_yaml_structure(projects, org)
+        list_data = projects_to_list_structure(projects, org)
         
-        # Ensure output directory exists
+        # Ensure output directories exist
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Save to YAML file
+        list_output_path = Path(list_output)
+        list_output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Save to YAML files
         save_yaml(yaml_data, str(output_path))
+        save_yaml(list_data, str(list_output_path))
         
         # Print summary
         print(f"\n📋 Resumo da extração:")
         print(f"   Organização: {org}")
         print(f"   Total de projetos: {len(projects)}")
+        print(f"   Arquivo completo: {output}")
+        print(f"   Arquivo de lista: {list_output}")
         
         total_fields = sum(len(p["fields"]) for p in yaml_data["projects"])
         print(f"   Total de campos: {total_fields}")

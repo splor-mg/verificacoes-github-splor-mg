@@ -38,7 +38,8 @@ import yaml
 # Configurações padrão
 DEFAULT_ORG = 'splor-mg'
 DEFAULT_REPOS_FILE = 'docs/repos_list.csv'
-DEFAULT_PROJECTS_FILE = 'docs/projects-panels.yml'
+DEFAULT_PROJECTS_LIST = 'docs/projects-panels-list.yml'
+DEFAULT_PROJECT_PANEL = 13  # Número do projeto "Gestão à Vista AID"
 DEFAULT_FIELD_NAME = 'Data Fim'
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
@@ -57,6 +58,34 @@ def load_dotenv():
         print("✅ Variáveis de ambiente carregadas")
     else:
         print(f"⚠️  Arquivo {env_file} não encontrado")
+
+
+def update_projects_data():
+    """Chama o script projects_panels.py para atualizar os arquivos de projetos"""
+    import subprocess
+    import sys
+    
+    print("🔄 Atualizando dados dos projetos...")
+    
+    try:
+        # Executar o script projects_panels.py
+        result = subprocess.run([
+            sys.executable, 'scripts/projects_panels.py'
+        ], capture_output=True, text=True, cwd=Path.cwd())
+        
+        if result.returncode == 0:
+            print("✅ Dados dos projetos atualizados com sucesso")
+            if result.stdout:
+                print(f"📋 Saída do projects_panels.py: {result.stdout}")
+            return True
+        else:
+            print(f"❌ Erro ao atualizar dados dos projetos: {result.stderr}")
+            if result.stdout:
+                print(f"📋 Saída do projects_panels.py: {result.stdout}")
+            return False
+    except Exception as e:
+        print(f"❌ Erro ao executar projects_panels.py: {e}")
+        return False
 
 def _require_env(name: str) -> str:
     """Get required environment variable or raise error."""
@@ -138,24 +167,162 @@ def load_projects_from_yaml(yaml_file: str) -> List[Dict[str, Any]]:
     
     return projects
 
-def filter_projects_with_data_fim_field(projects: List[Dict[str, Any]], field_name: str = DEFAULT_FIELD_NAME) -> List[Dict[str, Any]]:
-    """Filtra projetos que possuem o campo 'Data Fim'"""
+
+def select_panels_interactive(projects_list: List[Dict[str, Any]], field_name: str = DEFAULT_FIELD_NAME) -> List[int]:
+    """Interface interativa para seleção de painéis"""
+    if not projects_list:
+        print("❌ Nenhum projeto disponível para seleção")
+        return []
+    
+    # Criar dicionário para busca rápida por número do projeto
+    projects_by_number = {project['number']: project for project in projects_list}
+    available_numbers = sorted(projects_by_number.keys())
+    
+    print("\n📋 Projetos disponíveis:")
+    print("=" * 60)
+    
+    for project_number in available_numbers:
+        project = projects_by_number[project_number]
+        print(f"num. prj: {project_number}")
+        print(f"    name: {project['name']}")
+        print(f"      ID: {project['id']}")
+        print()
+    
+    print("=" * 60)
+    
+    while True:
+        try:
+            selection = input("Digite o(s) número(s) do(s) projeto(s) que deseja sincronizar (separados por vírgula) ou 'all' para todos: ").strip()
+            
+            if selection.lower() == 'all':
+                selected_projects = []
+                for project_number in available_numbers:
+                    project = projects_by_number[project_number]
+                    # Verificar se o projeto possui o campo especificado
+                    has_field = False
+                    for field in project.get('fields', []):
+                        if field.get('name', '').strip().lower() == field_name.strip().lower():
+                            has_field = True
+                            break
+                    
+                    if has_field:
+                        selected_projects.append(project_number)
+                        print(f"  ✅ Projeto '{project['name']}' (#{project_number}) possui campo '{field_name}'")
+                    else:
+                        print(f"  ❌ Projeto '{project['name']}' (#{project_number}) NÃO possui campo '{field_name}'")
+                
+                if not selected_projects:
+                    print(f"\n❌ Nenhum dos projetos selecionados possui o campo '{field_name}'")
+                    print("💡 Verifique se o campo existe nos projetos ou use um nome de campo diferente")
+                    return []
+                
+                print(f"\n✅ Projetos selecionados: {selected_projects}")
+                return selected_projects
+            
+            # Parse da seleção
+            numbers = [int(x.strip()) for x in selection.split(',')]
+            
+            # Validar números e verificar campos
+            valid_numbers = []
+            selected_project_names = []
+            
+            for num in numbers:
+                if num in projects_by_number:
+                    project = projects_by_number[num]
+                    project_name = project['name']
+                    
+                    # Verificar se o projeto possui o campo especificado
+                    has_field = False
+                    for field in project.get('fields', []):
+                        if field.get('name', '').strip().lower() == field_name.strip().lower():
+                            has_field = True
+                            break
+                    
+                    if has_field:
+                        valid_numbers.append(num)
+                        selected_project_names.append(project_name)
+                    else:
+                        print(f"❌ Projeto '{project_name}' (#{num}) NÃO possui o campo '{field_name}'")
+                        print(f"💡 O processo será interrompido pois o projeto selecionado não tem o campo pretendido")
+                        return []
+                else:
+                    print(f"❌ Número inválido: {num}. Use números de projeto válidos: {', '.join(map(str, available_numbers))}")
+                    break
+            else:
+                if valid_numbers:
+                    print(f"✅ Projetos selecionados: {valid_numbers}")
+                    for number, name in zip(valid_numbers, selected_project_names):
+                        print(f"Projeto selecionado: {number} - {name}")
+                    return valid_numbers
+                else:
+                    print("❌ Nenhum projeto válido selecionado")
+                    continue
+                    
+        except ValueError:
+            print("❌ Formato inválido. Use números separados por vírgula (ex: 1,3,5) ou 'all'")
+        except KeyboardInterrupt:
+            print("\n⏹️  Operação cancelada pelo usuário")
+            return []
+
+def filter_projects_by_numbers(projects_list: List[Dict[str, Any]], target_numbers: List[int]) -> List[Dict[str, Any]]:
+    """Filtra projetos da lista pelos números especificados"""
     filtered_projects = []
     
-    for project in projects:
-        has_field = False
-        for field in project.get('fields', []):
-            if field.get('name', '').strip().lower() == field_name.strip().lower():
-                has_field = True
-                break
-        
-        if has_field:
+    for project in projects_list:
+        if project.get('number') in target_numbers:
             filtered_projects.append(project)
-            print(f"  ✅ Projeto '{project['name']}' (#{project['number']}) possui campo '{field_name}'")
-        else:
-            print(f"  ⏭️  Projeto '{project['name']}' (#{project['number']}) não possui campo '{field_name}'")
+            print(f"  ✅ Projeto '{project['name']}' (#{project['number']}) selecionado")
     
     return filtered_projects
+
+
+def load_projects_with_fields_from_yaml(yaml_file: str, target_numbers: List[int], field_name: str = DEFAULT_FIELD_NAME) -> List[Dict[str, Any]]:
+    """Carrega projetos completos do arquivo YAML e filtra pelos números e campo especificados"""
+    projects = []
+    
+    if not os.path.exists(yaml_file):
+        print(f"❌ Arquivo {yaml_file} não encontrado!")
+        return projects
+    
+    print(f"📊 Carregando projetos completos de {yaml_file}...")
+    
+    try:
+        with open(yaml_file, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+            if data and 'projects' in data:
+                all_projects = data['projects']
+                print(f"🔍 Total de projetos no arquivo: {len(all_projects)}")
+                print(f"🎯 Números de projeto solicitados: {target_numbers}")
+                print(f"🔍 Campo procurado: '{field_name}'")
+                
+                # Filtrar pelos números especificados
+                for project in all_projects:
+                    if project.get('number') in target_numbers:
+                        print(f"🔍 Analisando projeto: {project['name']} (#{project['number']})")
+                        print(f"   Campos disponíveis: {[f.get('name', 'N/A') for f in project.get('fields', [])]}")
+                        
+                        # Verificar se possui o campo especificado
+                        has_field = False
+                        for field in project.get('fields', []):
+                            field_name_actual = field.get('name', '').strip()
+                            if field_name_actual.lower() == field_name.strip().lower():
+                                has_field = True
+                                print(f"   ✅ Campo encontrado: '{field_name_actual}' (exato)")
+                                break
+                        
+                        if has_field:
+                            projects.append(project)
+                            print(f"  ✅ Projeto '{project['name']}' (#{project['number']}) possui campo '{field_name}'")
+                        else:
+                            print(f"  ⏭️  Projeto '{project['name']}' (#{project['number']}) não possui campo '{field_name}'")
+                
+                print(f"✅ {len(projects)} projetos carregados e filtrados")
+            else:
+                print("⚠️  Nenhum projeto encontrado no arquivo YAML")
+    except yaml.YAMLError as e:
+        print(f"❌ Erro ao ler arquivo YAML: {e}")
+    
+    return projects
 
 def get_project_field_id(project: Dict[str, Any], field_name: str = DEFAULT_FIELD_NAME) -> Optional[str]:
     """Obtém o ID do campo especificado no projeto"""
@@ -382,16 +549,20 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemplos de uso:
-  python scripts/issues_close_date.py                               # Processa todos os projetos com campo 'Data Fim'
-  python scripts/issues_close_date.py --projects "1,2,3"            # Processa apenas projetos específicos
+  python scripts/issues_close_date.py                               # Processa projeto padrão (GITHUB_PROJECT_PANEL_DEFAULT)
+  python scripts/issues_close_date.py --panel                       # Seleção interativa de projetos
+  python scripts/issues_close_date.py --projects "1,2,3"            # Processa apenas projetos específicos (números)
   python scripts/issues_close_date.py --org "minha-org"             # Usa organização diferente
   python scripts/issues_close_date.py --field "Data Conclusão"      # Usa nome de campo diferente
   python scripts/issues_close_date.py --verbose                     # Modo verboso com mais detalhes
         """
     )
     
+    parser.add_argument('--panel', 
+                       action='store_true',
+                       help='Seleção interativa de projetos')
     parser.add_argument('--projects', 
-                       help='Projetos específicos (lista separada por vírgula)')
+                       help='Projetos específicos (números separados por vírgula)')
     parser.add_argument('--org', 
                        help='Organização para processar (padrão: splor-mg)')
     parser.add_argument('--field', 
@@ -400,9 +571,9 @@ Exemplos de uso:
     parser.add_argument('--repos-file', 
                        default=DEFAULT_REPOS_FILE,
                        help=f'Arquivo CSV com lista de repositórios (padrão: {DEFAULT_REPOS_FILE})')
-    parser.add_argument('--projects-file', 
-                       default=DEFAULT_PROJECTS_FILE,
-                       help=f'Arquivo YAML com lista de projetos (padrão: {DEFAULT_PROJECTS_FILE})')
+    parser.add_argument('--projects-list', 
+                       default=DEFAULT_PROJECTS_LIST,
+                       help=f'Arquivo YAML com lista de projetos (padrão: {DEFAULT_PROJECTS_LIST})')
     parser.add_argument('--verbose', '-v', 
                        action='store_true',
                        help='Modo verboso com mais detalhes')
@@ -426,14 +597,18 @@ def main():
 
     print(f"🔑 Usando token: {github_token[:8]}...")
     
+    # Atualizar dados dos projetos primeiro
+    if not update_projects_data():
+        print("⚠️  Continuando com dados existentes...")
+    
     # Aplicar hierarquia de priorização (argumentos > env vars > padrões)
     org = args.org or os.getenv("GITHUB_ORG") or DEFAULT_ORG
     
     # Mostrar configurações aplicadas
     print(f"\n🔧 Configurações aplicadas:")
     print(f"   Organização: {org}")
-    print(f"   Arquivo de repositórios: {args.repos_file or DEFAULT_REPOS_FILE}")
-    print(f"   Arquivo de projetos: {args.projects_file or DEFAULT_PROJECTS_FILE}")
+    print(f"   Arquivo de repositórios: {args.repos_file}")
+    print(f"   Arquivo de projetos: {args.projects_list}")
     print(f"   Campo: {args.field}")
     
     # Mostrar qual valor foi aplicado e de onde veio
@@ -456,28 +631,47 @@ def main():
             print("❌ Nenhum repositório encontrado para processar")
             return
         
-        # Carregar projetos
-        all_projects = load_projects_from_yaml(args.projects_file)
-        if not all_projects:
-            print("❌ Nenhum projeto encontrado para processar")
+        # Carregar lista de projetos (usar projects-panels.yml que tem os campos completos)
+        projects_list = load_projects_from_yaml('docs/projects-panels.yml')
+        if not projects_list:
+            print("❌ Nenhum projeto encontrado na lista")
             return
         
-        # Filtrar projetos que possuem o campo "Data Fim"
-        print(f"\n🔍 Filtrando projetos com campo '{args.field}'...")
-        projects_with_field = filter_projects_with_data_fim_field(all_projects, args.field)
+        # Determinar quais projetos processar
+        target_project_numbers = []
+        
+        if args.panel:
+            # Seleção interativa
+            target_project_numbers = select_panels_interactive(projects_list, args.field)
+            if not target_project_numbers:
+                print("❌ Nenhum projeto selecionado")
+                return
+        elif args.projects:
+            # Projetos específicos via argumento
+            try:
+                target_project_numbers = [int(p.strip()) for p in args.projects.split(',')]
+                print(f"🎯 Projetos especificados: {target_project_numbers}")
+            except ValueError:
+                print("❌ Formato inválido para --projects. Use números separados por vírgula")
+                return
+        else:
+            # Projeto padrão
+            default_panel = os.getenv("GITHUB_PROJECT_PANEL_DEFAULT") or DEFAULT_PROJECT_PANEL
+            try:
+                target_project_numbers = [int(default_panel)]
+                print(f"🎯 Usando projeto padrão: {target_project_numbers}")
+            except (ValueError, TypeError):
+                print(f"❌ Valor inválido para projeto padrão: {default_panel}")
+                return
+        
+        # Carregar projetos completos com campos e filtrar
+        print(f"\n🔍 Carregando projetos completos e filtrando...")
+        projects_with_field = load_projects_with_fields_from_yaml(
+            'docs/projects-panels.yml', target_project_numbers, args.field
+        )
         
         if not projects_with_field:
-            print(f"❌ Nenhum projeto encontrado com campo '{args.field}'")
-            return
-        
-        # Filtrar projetos específicos se especificado
-        if args.projects:
-            project_numbers = [int(p.strip()) for p in args.projects.split(',')]
-            projects_with_field = [p for p in projects_with_field if p.get('number') in project_numbers]
-            print(f"🎯 Filtrando para projetos específicos: {project_numbers}")
-        
-        if not projects_with_field:
-            print("❌ Nenhum projeto encontrado após filtro específico")
+            print(f"❌ Nenhum projeto encontrado com campo '{args.field}' nos números especificados")
             return
         
         print(f"✅ {len(projects_with_field)} projetos serão processados")
