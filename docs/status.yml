@@ -1,0 +1,25 @@
+# Este arquivo define os status utilizados nos projetos
+# Configuração de Status para projetos GitHub -> https://github.com/orgs/MINHA-ORGANIZACAO/projects/PROJECT-NUMBER/settings/fields/Status
+# Baseado nas configurações do campo "Status" do GitHub Projects
+
+field_name: Status
+field_type: Single select
+options:
+  - name: Backlog
+    description: "Item aguardando para ser iniciado"
+    color: "#f8d7da"
+  - name: Todo
+    description: "Este item não foi iniciado"
+    color: "#d4edda"
+  - name: In Progress
+    description: "Este item está sendo trabalhado ativamente"
+    color: "#fff3cd"
+  - name: Review
+    description: "Este item está aguardando revisão"
+    color: "#ffeeba"
+  - name: Waiting
+    description: "Item aguardando por alguma ação externa ou dependência"
+    color: "#e2d9f3"
+  - name: Done
+    description: "Este item foi concluído"
+    color: "#d1ecf1"
