@@ -7,8 +7,9 @@ nos projetos especificados baseado no status do issue.
 
 Regras de negócio:
 - Se status != "Done": campo "Data Fim" deve estar vazio
-- Se status == "Done" e campo vazio: preencher com data de fechamento do issue
+- Se status == "Done" e issue fechado e campo vazio: preencher com data de fechamento do issue
 - Se status == "Done" e campo preenchido: manter como está
+- Se status == "Done" mas issue não fechado: não preencher campo
 
 Environment variables used:
 - GITHUB_TOKEN: GitHub token with write access to Projects v2
@@ -533,9 +534,9 @@ def process_issue_for_projects(token: str, issue: Dict[str, Any], target_project
         
         elif status and status.lower() == 'done':
             # Status == "Done": campo deve ter data de fechamento
-            if not current_date and issue_closed_at:
+            if not current_date and issue_closed_at and issue_state == 'CLOSED':
                 date_value = _iso_date(issue_closed_at)
-                print(f"      📅 Definindo campo '{field_name}' para {date_value} (status = Done)")
+                print(f"      📅 Definindo campo '{field_name}' para {date_value} (status = Done, issue fechado)")
                 if set_date_field(token, project_id, project_item['id'], field_id, date_value):
                     changes["set"] += 1
                     print(f"      ✅ Campo '{field_name}' definido para {date_value}")
@@ -543,6 +544,8 @@ def process_issue_for_projects(token: str, issue: Dict[str, Any], target_project
                     changes["errors"] += 1
             elif current_date:
                 print(f"      ✅ Campo '{field_name}' já está preenchido: {current_date}")
+            elif issue_state != 'CLOSED':
+                print(f"      ⚠️  Issue com status 'Done' mas não está fechado (state: {issue_state})")
             else:
                 print(f"      ⚠️  Issue fechado mas sem data de fechamento")
     
