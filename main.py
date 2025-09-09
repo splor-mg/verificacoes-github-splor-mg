@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Optional, List
 from scripts.repos_list import sync_organization_labels, get_github_repos, export_to_csv
 from scripts.labels_sync import sync_labels_for_repo
+from scripts.projects_panels import main as projects_panels_main
+from scripts.issues_close_date import main as issues_close_date_main
 
 DEFAULT_ORG = 'splor-mg'
 DEFAULT_LABELS_FILE = 'docs/labels.yaml'
@@ -65,6 +67,70 @@ def validate_config(config: dict) -> bool:
     return True
 
 
+def run_projects_panels(org: str, verbose: bool = False) -> bool:
+    """Executa o script projects_panels.py"""
+    try:
+        print(f"\n📊 Atualizando dados dos projetos da organização: {org}")
+        
+        # Simular argumentos para o script projects_panels.py
+        import sys
+        original_argv = sys.argv.copy()
+        
+        # Configurar argumentos para projects_panels.py
+        sys.argv = ['projects_panels.py', '--org', org]
+        if verbose:
+            sys.argv.append('--verbose')
+        
+        # Executar o script
+        projects_panels_main()
+        
+        # Restaurar argumentos originais
+        sys.argv = original_argv
+        
+        print("✅ Dados dos projetos atualizados com sucesso!")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erro ao atualizar dados dos projetos: {e}")
+        logging.error(f"Erro ao atualizar dados dos projetos: {e}")
+        return False
+
+
+def run_issues_close_date(org: str, panel: bool = False, projects: str = None, 
+                         field: str = 'Data Fim', verbose: bool = False) -> bool:
+    """Executa o script issues_close_date.py"""
+    try:
+        print(f"\n🔧 Gerenciando campo '{field}' em projetos da organização: {org}")
+        
+        # Simular argumentos para o script issues_close_date.py
+        import sys
+        original_argv = sys.argv.copy()
+        
+        # Configurar argumentos para issues_close_date.py
+        sys.argv = ['issues_close_date.py', '--org', org, '--field', field]
+        
+        if panel:
+            sys.argv.append('--panel')
+        elif projects:
+            sys.argv.extend(['--projects', projects])
+        
+        if verbose:
+            sys.argv.append('--verbose')
+        
+        # Executar o script
+        issues_close_date_main()
+        
+        # Restaurar argumentos originais
+        sys.argv = original_argv
+        
+        print("✅ Gerenciamento de issues concluído com sucesso!")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erro ao gerenciar issues: {e}")
+        logging.error(f"Erro ao gerenciar issues: {e}")
+        return False
+
 
 def main():
     """Função principal"""
@@ -73,6 +139,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemplos de uso:
+  # Labels e repositórios
   python main.py --sync-org                    # Sincroniza labels da organização
   python main.py --list-repos                  # Lista repositórios
   python main.py --sync-repos                  # Sincroniza labels nos repositórios
@@ -81,6 +148,16 @@ Exemplos de uso:
   python main.py --sync-repos --delete-extras  # Sincroniza e remove labels extras
   python main.py --org minha-org --repos repo1,repo2  # Sincroniza organização e repositórios específicos
   python main.py --labels /caminho/labels.yaml  # Usa arquivo de labels customizado
+  
+  # Projetos GitHub
+  python main.py --projects-panels             # Atualiza dados dos projetos (projects-panels.yml)
+  python main.py --projects-list               # Atualiza lista de projetos (projects-panels-list.yml)
+  
+  # Issues e campos de data
+  python main.py --issues-close-date           # Gerencia campo Data Fim em projetos
+  python main.py --issues-panel                # Seleção interativa de projetos para issues
+  python main.py --issues-projects "1,2,3"     # Projetos específicos para issues
+  python main.py --issues-field "Data Conclusão"  # Campo customizado para issues
         """
     )
     
@@ -101,10 +178,27 @@ Exemplos de uso:
     parser.add_argument('--repos', type=str, help='Repositórios específicos (CSV ou lista separada por vírgula)')
     parser.add_argument('--labels', type=str, help='Arquivo de labels customizado')
     
+    # Argumentos para projetos
+    parser.add_argument('--projects-panels', action='store_true', 
+                       help='Atualiza dados dos projetos GitHub (projects-panels.yml)')
+    parser.add_argument('--projects-list', action='store_true',
+                       help='Atualiza lista de projetos (projects-panels-list.yml)')
+    
+    # Argumentos para issues
+    parser.add_argument('--issues-close-date', action='store_true',
+                       help='Gerencia campo Data Fim em projetos GitHub')
+    parser.add_argument('--issues-panel', action='store_true',
+                       help='Seleção interativa de projetos para issues')
+    parser.add_argument('--issues-projects', type=str,
+                       help='Projetos específicos para issues (números separados por vírgula)')
+    parser.add_argument('--issues-field', type=str, default='Data Fim',
+                       help='Nome do campo de data para issues (padrão: Data Fim)')
+    
     args = parser.parse_args()
     
     # Se nenhum argumento foi fornecido, mostra ajuda
-    if not any([args.sync_org, args.list_repos, args.sync_repos, args.all]):
+    if not any([args.sync_org, args.list_repos, args.sync_repos, args.all, 
+                args.projects_panels, args.projects_list, args.issues_close_date, args.issues_panel]):
         parser.print_help()
         return
     
@@ -232,6 +326,34 @@ Exemplos de uso:
             except Exception as e:
                 print(f"❌ Erro na sincronização dos repositórios: {e}")
                 logging.error(f"Erro na sincronização dos repositórios: {e}")
+                success = False
+        
+        # Executar comandos de projetos
+        if args.all or args.projects_panels or args.projects_list:
+            try:
+                if not run_projects_panels(config['github_org'], args.verbose):
+                    success = False
+            except Exception as e:
+                print(f"❌ Erro ao executar projects_panels: {e}")
+                logging.error(f"Erro ao executar projects_panels: {e}")
+                success = False
+        
+        # Executar comandos de issues
+        if args.all or args.issues_close_date or args.issues_panel:
+            try:
+                # Só usar modo interativo se explicitamente solicitado
+                panel_mode = args.issues_panel
+                if not run_issues_close_date(
+                    config['github_org'], 
+                    panel=panel_mode,
+                    projects=args.issues_projects,
+                    field=args.issues_field,
+                    verbose=args.verbose
+                ):
+                    success = False
+            except Exception as e:
+                print(f"❌ Erro ao executar issues_close_date: {e}")
+                logging.error(f"Erro ao executar issues_close_date: {e}")
                 success = False
         
         # Resultado final
