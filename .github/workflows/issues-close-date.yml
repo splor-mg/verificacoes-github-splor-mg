@@ -24,9 +24,8 @@ on:
         type: choice
         options:
           - "13 - Gestão à Vista AID"
-          - "1 - Gestão à Vista Pilot"
-          - "2 - [TEMPLATE] Gestão à Vista AID"
-          - "3 - Gestão à Vista Pilot 2"
+          - "16 - Gestão Gabinete SPLOR"
+
 
 
       field_name:

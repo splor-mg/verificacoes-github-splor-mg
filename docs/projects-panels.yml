@@ -1,17 +1,123 @@
-org: aid-pilot
+org: splor-mg
 projects:
-- name: Gestão à Vista Pilot 2
-  number: 3
-  id: PVT_kwDODaVCq84BBqrN
+- name: Gestão Gabinete SPLOR
+  number: 16
+  id: PVT_kwDOByfrJc4A_Psy
   fields:
   - name: Title
-    id: PVTF_lADODaVCq84BBqrNzg0Gvq4
+    id: PVTF_lADOByfrJc4A_PsyzgyaBVo
     dataType: TITLE
   - name: Assignees
-    id: PVTF_lADODaVCq84BBqrNzg0Gvq8
+    id: PVTF_lADOByfrJc4A_PsyzgyaBVs
     dataType: ASSIGNEES
   - name: Status
-    id: PVTSSF_lADODaVCq84BBqrNzg0GvrA
+    id: PVTSSF_lADOByfrJc4A_PsyzgyaBVw
+    dataType: SINGLE_SELECT
+    options:
+    - name: Todo
+      description: This item hasn't been started
+      color: GREEN
+    - name: In Progress
+      description: This is actively being worked on
+      color: YELLOW
+    - name: Done
+      description: This has been completed
+      color: PURPLE
+  - name: Labels
+    id: PVTF_lADOByfrJc4A_PsyzgyaBV0
+    dataType: LABELS
+  - name: Linked pull requests
+    id: PVTF_lADOByfrJc4A_PsyzgyaBV4
+    dataType: LINKED_PULL_REQUESTS
+  - name: Milestone
+    id: PVTF_lADOByfrJc4A_PsyzgyaBV8
+    dataType: MILESTONE
+  - name: Repository
+    id: PVTF_lADOByfrJc4A_PsyzgyaBWA
+    dataType: REPOSITORY
+  - name: Reviewers
+    id: PVTF_lADOByfrJc4A_PsyzgyaBWI
+    dataType: REVIEWERS
+  - name: Parent issue
+    id: PVTF_lADOByfrJc4A_PsyzgyaBWM
+    dataType: PARENT_ISSUE
+  - name: Sub-issues progress
+    id: PVTF_lADOByfrJc4A_PsyzgyaBWQ
+    dataType: SUB_ISSUES_PROGRESS
+  - name: Priority
+    id: PVTSSF_lADOByfrJc4A_PsyzgyaBc0
+    dataType: SINGLE_SELECT
+    options:
+    - name: P0
+      description: ''
+      color: RED
+    - name: P1
+      description: ''
+      color: ORANGE
+    - name: P2
+      description: ''
+      color: YELLOW
+  - name: Size
+    id: PVTSSF_lADOByfrJc4A_PsyzgyaBc4
+    dataType: SINGLE_SELECT
+    options:
+    - name: XS
+      description: ''
+      color: GREEN
+    - name: S
+      description: ''
+      color: RED
+    - name: M
+      description: ''
+      color: BLUE
+    - name: L
+      description: ''
+      color: PURPLE
+    - name: XL
+      description: ''
+      color: YELLOW
+  - name: Estimate
+    id: PVTF_lADOByfrJc4A_PsyzgyaBc8
+    dataType: NUMBER
+  - name: Iteration
+    id: PVTIF_lADOByfrJc4A_PsyzgyaBdA
+    dataType: ITERATION
+    iterations:
+    - id: 53e0ebba
+      title: Iteration 3
+      startDate: '2025-08-27'
+      endDate: ''
+  - name: Start date
+    id: PVTF_lADOByfrJc4A_PsyzgyaBdE
+    dataType: DATE
+  - name: End date
+    id: PVTF_lADOByfrJc4A_PsyzgyaBdI
+    dataType: DATE
+  - name: Tema
+    id: PVTSSF_lADOByfrJc4A_PsyzgyaDW8
+    dataType: SINGLE_SELECT
+    options:
+    - name: MDE
+      description: ''
+      color: GRAY
+    - name: SPS
+      description: ''
+      color: GRAY
+    - name: FEM
+      description: ''
+      color: GRAY
+- name: Gestão à Vista AID
+  number: 13
+  id: PVT_kwDOByfrJc4AmH_f
+  fields:
+  - name: Title
+    id: PVTF_lADOByfrJc4AmH_fzgeEkCw
+    dataType: TITLE
+  - name: Assignees
+    id: PVTF_lADOByfrJc4AmH_fzgeEkC0
+    dataType: ASSIGNEES
+  - name: Status
+    id: PVTSSF_lADOByfrJc4AmH_fzgeEkC4
     dataType: SINGLE_SELECT
     options:
     - name: Backlog
@@ -33,28 +139,28 @@ projects:
       description: This has been completed
       color: PURPLE
   - name: Labels
-    id: PVTF_lADODaVCq84BBqrNzg0GvrE
+    id: PVTF_lADOByfrJc4AmH_fzgeEkC8
     dataType: LABELS
   - name: Linked pull requests
-    id: PVTF_lADODaVCq84BBqrNzg0GvrI
+    id: PVTF_lADOByfrJc4AmH_fzgeEkDA
     dataType: LINKED_PULL_REQUESTS
   - name: Milestone
-    id: PVTF_lADODaVCq84BBqrNzg0GvrM
+    id: PVTF_lADOByfrJc4AmH_fzgeEkDE
     dataType: MILESTONE
   - name: Repository
-    id: PVTF_lADODaVCq84BBqrNzg0GvrQ
+    id: PVTF_lADOByfrJc4AmH_fzgeEkDI
     dataType: REPOSITORY
   - name: Reviewers
-    id: PVTF_lADODaVCq84BBqrNzg0GvrY
+    id: PVTF_lADOByfrJc4AmH_fzgeEkDY
     dataType: REVIEWERS
   - name: Parent issue
-    id: PVTF_lADODaVCq84BBqrNzg0Gvrc
+    id: PVTF_lADOByfrJc4AmH_fzgeEkDc
     dataType: PARENT_ISSUE
   - name: Sub-issues progress
-    id: PVTF_lADODaVCq84BBqrNzg0Gvrg
+    id: PVTF_lADOByfrJc4AmH_fzgeEkDg
     dataType: SUB_ISSUES_PROGRESS
   - name: Projeto
-    id: PVTSSF_lADODaVCq84BBqrNzg0Gvrs
+    id: PVTSSF_lADOByfrJc4AmH_fzgiBmvg
     dataType: SINGLE_SELECT
     options:
     - name: Automatizações
@@ -85,210 +191,19 @@ projects:
       description: ''
       color: RED
   - name: Planejado
-    id: PVTSSF_lADODaVCq84BBqrNzg0Gvrw
+    id: PVTSSF_lADOByfrJc4AmH_fzgyd8WE
     dataType: SINGLE_SELECT
     options:
     - name: Sim
       description: ''
       color: GRAY
   - name: Data início
-    id: PVTF_lADODaVCq84BBqrNzg0Gvr0
+    id: PVTF_lADOByfrJc4AmH_fzgrRwWU
     dataType: DATE
   - name: Data de vencimento
-    id: PVTF_lADODaVCq84BBqrNzg0Gvr4
+    id: PVTF_lADOByfrJc4AmH_fzgo7Y4M
     dataType: DATE
   - name: Data Fim
-    id: PVTF_lADODaVCq84BBqrNzg0Gvr8
+    id: PVTF_lADOByfrJc4AmH_fzgrpxMA
     dataType: DATE
-  description: TESTE DE DESCRIÇÃO DO PAINEL
-- name: '[TEMPLATE] Gestão à Vista AID'
-  number: 2
-  id: PVT_kwDODaVCq84BBqq_
-  fields:
-  - name: Title
-    id: PVTF_lADODaVCq84BBqq_zg0GvgI
-    dataType: TITLE
-  - name: Assignees
-    id: PVTF_lADODaVCq84BBqq_zg0GvgM
-    dataType: ASSIGNEES
-  - name: Status
-    id: PVTSSF_lADODaVCq84BBqq_zg0GvgQ
-    dataType: SINGLE_SELECT
-    options:
-    - name: Backlog
-      description: ''
-      color: RED
-    - name: Todo
-      description: This item hasn't been started
-      color: GREEN
-    - name: In Progress
-      description: This is actively being worked on
-      color: YELLOW
-    - name: Review
-      description: This is waiting for review
-      color: ORANGE
-    - name: Waiting
-      description: ''
-      color: PINK
-    - name: Done
-      description: This has been completed
-      color: PURPLE
-  - name: Labels
-    id: PVTF_lADODaVCq84BBqq_zg0GvgU
-    dataType: LABELS
-  - name: Linked pull requests
-    id: PVTF_lADODaVCq84BBqq_zg0GvgY
-    dataType: LINKED_PULL_REQUESTS
-  - name: Milestone
-    id: PVTF_lADODaVCq84BBqq_zg0Gvgc
-    dataType: MILESTONE
-  - name: Repository
-    id: PVTF_lADODaVCq84BBqq_zg0Gvgg
-    dataType: REPOSITORY
-  - name: Reviewers
-    id: PVTF_lADODaVCq84BBqq_zg0Gvgo
-    dataType: REVIEWERS
-  - name: Parent issue
-    id: PVTF_lADODaVCq84BBqq_zg0Gvgs
-    dataType: PARENT_ISSUE
-  - name: Sub-issues progress
-    id: PVTF_lADODaVCq84BBqq_zg0Gvgw
-    dataType: SUB_ISSUES_PROGRESS
-  - name: Projeto
-    id: PVTSSF_lADODaVCq84BBqq_zg0Gvg8
-    dataType: SINGLE_SELECT
-    options:
-    - name: Automatizações
-      description: ''
-      color: ORANGE
-    - name: Capacitações
-      description: ''
-      color: PURPLE
-    - name: Dados Abertos
-      description: ''
-      color: PINK
-    - name: Datamart
-      description: ''
-      color: GRAY
-    - name: Feed Legislativo
-      description: ''
-      color: PINK
-    - name: Governança
-      description: ''
-      color: YELLOW
-    - name: Paineis
-      description: ''
-      color: ORANGE
-    - name: Rotina
-      description: ''
-      color: BLUE
-    - name: Volumes LOA
-      description: ''
-      color: RED
-  - name: Planejado
-    id: PVTSSF_lADODaVCq84BBqq_zg0GvhA
-    dataType: SINGLE_SELECT
-    options:
-    - name: Sim
-      description: ''
-      color: GRAY
-  - name: Data início
-    id: PVTF_lADODaVCq84BBqq_zg0GvhE
-    dataType: DATE
-  - name: Data de vencimento
-    id: PVTF_lADODaVCq84BBqq_zg0GvhI
-    dataType: DATE
-  - name: Data Fim
-    id: PVTF_lADODaVCq84BBqq_zg0GvhM
-    dataType: DATE
-- name: Gestão à Vista Pilot
-  number: 1
-  id: PVT_kwDODaVCq84BBqdK
-  fields:
-  - name: Title
-    id: PVTF_lADODaVCq84BBqdKzg0GleY
-    dataType: TITLE
-  - name: Assignees
-    id: PVTF_lADODaVCq84BBqdKzg0Glec
-    dataType: ASSIGNEES
-  - name: Status
-    id: PVTSSF_lADODaVCq84BBqdKzg0Gleg
-    dataType: SINGLE_SELECT
-    options:
-    - name: Todo
-      description: This item hasn't been started
-      color: GREEN
-    - name: In Progress
-      description: This is actively being worked on
-      color: YELLOW
-    - name: Done
-      description: This has been completed
-      color: PURPLE
-  - name: Labels
-    id: PVTF_lADODaVCq84BBqdKzg0Glek
-    dataType: LABELS
-  - name: Linked pull requests
-    id: PVTF_lADODaVCq84BBqdKzg0Gleo
-    dataType: LINKED_PULL_REQUESTS
-  - name: Milestone
-    id: PVTF_lADODaVCq84BBqdKzg0Gles
-    dataType: MILESTONE
-  - name: Repository
-    id: PVTF_lADODaVCq84BBqdKzg0Glew
-    dataType: REPOSITORY
-  - name: Reviewers
-    id: PVTF_lADODaVCq84BBqdKzg0Gle4
-    dataType: REVIEWERS
-  - name: Parent issue
-    id: PVTF_lADODaVCq84BBqdKzg0Gle8
-    dataType: PARENT_ISSUE
-  - name: Sub-issues progress
-    id: PVTF_lADODaVCq84BBqdKzg0GlfA
-    dataType: SUB_ISSUES_PROGRESS
-  - name: Projeto
-    id: PVTSSF_lADODaVCq84BBqdKzg0GufA
-    dataType: SINGLE_SELECT
-    options:
-    - name: Automatizações
-      description: ''
-      color: GRAY
-    - name: Capacitações
-      description: ''
-      color: GRAY
-    - name: Dados Abertos
-      description: ''
-      color: GRAY
-    - name: Datamart
-      description: ''
-      color: GRAY
-    - name: Feed Legislativo
-      description: ''
-      color: GRAY
-    - name: Governança
-      description: ''
-      color: GRAY
-    - name: Paineis
-      description: ''
-      color: GRAY
-    - name: Rotina
-      description: ''
-      color: GRAY
-    - name: Volumes LOA
-      description: ''
-      color: GRAY
-  - name: Planejado
-    id: PVTSSF_lADODaVCq84BBqdKzg0Gupg
-    dataType: SINGLE_SELECT
-    options:
-    - name: Sim
-      description: ''
-      color: GRAY
-  - name: Data Início
-    id: PVTF_lADODaVCq84BBqdKzg0Gurc
-    dataType: DATE
-  - name: Data de vencimento
-    id: PVTF_lADODaVCq84BBqdKzg0Gu4k
-    dataType: DATE
-  - name: Data Fims
-    id: PVTF_lADODaVCq84BBqdKzg0Gu8Y
-    dataType: DATE
+  description: Acompanhamento trabalho da Assessoria de Inteligência de Dados

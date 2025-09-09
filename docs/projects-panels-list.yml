@@ -1,11 +1,8 @@
-org: aid-pilot
+org: splor-mg
 projects:
-- number: 3
-  name: Gestão à Vista Pilot 2
-  id: PVT_kwDODaVCq84BBqrN
-- number: 2
-  name: '[TEMPLATE] Gestão à Vista AID'
-  id: PVT_kwDODaVCq84BBqq_
-- number: 1
-  name: Gestão à Vista Pilot
-  id: PVT_kwDODaVCq84BBqdK
+- number: 16
+  name: Gestão Gabinete SPLOR
+  id: PVT_kwDOByfrJc4A_Psy
+- number: 13
+  name: Gestão à Vista AID
+  id: PVT_kwDOByfrJc4AmH_f
