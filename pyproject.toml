@@ -49,14 +49,22 @@ issues-close-date-field = { cmd = "python main.py --issues-close-date-field", he
 issues-close-date-days-30 = { cmd = "python main.py --issues-close-date --issues-days 30", help = "Processa issues dos últimos 30 dias" }
 issues-close-date-days-90 = { cmd = "python main.py --issues-close-date --issues-days 90", help = "Processa issues dos últimos 90 dias" }
 issues-close-date-all = { cmd = "python main.py --issues-close-date --issues-all", help = "Processa TODOS os issues (primeira execução)" }
+
+# Tasks de otimização de consultas
+issues-close-date-no-cache = { cmd = "python main.py --issues-close-date --issues-no-cache", help = "Processa issues sem cache (para debugging)" }
+issues-close-date-batch-10 = { cmd = "python main.py --issues-close-date --issues-batch-repos 10", help = "Processa issues com lotes de 10 repositórios" }
+issues-close-date-batch-15 = { cmd = "python main.py --issues-close-date --issues-batch-repos 15", help = "Processa issues com lotes de 15 repositórios" }
+issues-close-date-optimized = { cmd = "python main.py --issues-close-date --issues-batch-repos 10 --issues-days 7", help = "Processa issues otimizado (lotes de 10, últimos 7 dias)" }
 update-workflow-options = { cmd = "python scripts/update_workflow_options.py", help = "Atualiza opções de projetos no workflow GitHub Actions dinamicamente" }
 
 # Tasks combinadas
 projects-and-issues = { cmd = "python main.py --projects-panels --issues-panel", help = "Atualiza projetos e gerencia issues com seleção interativa" }
 projects-and-issues-all = { cmd = "python main.py --projects-panels --issues-close-date --issues-all", help = "Atualiza projetos e processa TODOS os issues" }
 projects-and-issues-30 = { cmd = "python main.py --projects-panels --issues-close-date --issues-days 30", help = "Atualiza projetos e processa issues dos últimos 30 dias" }
+projects-and-issues-optimized = { cmd = "python main.py --projects-panels --issues-close-date --issues-batch-repos 10", help = "Atualiza projetos e processa issues otimizado (lotes de 10)" }
 full-workflow = { cmd = "python main.py --all --projects-panels --issues-panel", help = "Executa workflow completo: labels, repositórios, projetos e issues" }
 full-workflow-all-issues = { cmd = "python main.py --all --projects-panels --issues-close-date --issues-all", help = "Executa workflow completo processando TODOS os issues" }
+full-workflow-optimized = { cmd = "python main.py --all --projects-panels --issues-close-date --issues-batch-repos 10", help = "Executa workflow completo otimizado (lotes de 10 repositórios)" }
 
 # Tasks de setup
 install-dev = "poetry install --with dev"

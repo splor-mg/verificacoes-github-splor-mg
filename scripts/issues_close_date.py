@@ -36,6 +36,7 @@ import json
 import os
 import sys
 import time
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -50,6 +51,10 @@ DEFAULT_PROJECT_PANEL = 13  # Número do projeto "Gestão à Vista AID"
 DEFAULT_FIELD_NAME = 'Data Fim'
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
+
+# Cache simples em memória
+_query_cache = {}
+_cache_ttl = 300  # 5 minutos
 
 def load_dotenv():
     """Carrega variáveis de ambiente do arquivo .env"""
@@ -101,8 +106,44 @@ def _require_env(name: str) -> str:
         raise RuntimeError(f"Missing required environment variable: {name}")
     return value
 
-def _graphql(token: str, query: str, variables: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute GraphQL query against GitHub API."""
+def _get_cache_key(query: str, variables: Dict[str, Any]) -> str:
+    """Gera chave única para o cache baseada na query e variáveis"""
+    cache_data = {
+        'query': query,
+        'variables': variables
+    }
+    cache_string = json.dumps(cache_data, sort_keys=True)
+    return hashlib.md5(cache_string.encode()).hexdigest()
+
+def _is_cache_valid(timestamp: float) -> bool:
+    """Verifica se o cache ainda é válido"""
+    return time.time() - timestamp < _cache_ttl
+
+def _get_from_cache(cache_key: str) -> Optional[Dict[str, Any]]:
+    """Recupera dados do cache se válidos"""
+    if cache_key in _query_cache:
+        data, timestamp = _query_cache[cache_key]
+        if _is_cache_valid(timestamp):
+            return data
+        else:
+            # Remove cache expirado
+            del _query_cache[cache_key]
+    return None
+
+def _save_to_cache(cache_key: str, data: Dict[str, Any]) -> None:
+    """Salva dados no cache"""
+    _query_cache[cache_key] = (data, time.time())
+
+def _graphql(token: str, query: str, variables: Dict[str, Any], use_cache: bool = True) -> Dict[str, Any]:
+    """Execute GraphQL query against GitHub API with optional caching."""
+    
+    # Verificar cache primeiro (apenas para queries de leitura)
+    if use_cache and not query.strip().startswith('mutation'):
+        cache_key = _get_cache_key(query, variables)
+        cached_data = _get_from_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+    
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
@@ -117,7 +158,15 @@ def _graphql(token: str, query: str, variables: Dict[str, Any]) -> Dict[str, Any
     data = resp.json()
     if "errors" in data:
         raise RuntimeError(f"GraphQL errors: {json.dumps(data['errors'], ensure_ascii=False)}")
-    return data["data"]
+    
+    result = data["data"]
+    
+    # Salvar no cache se for query de leitura
+    if use_cache and not query.strip().startswith('mutation'):
+        cache_key = _get_cache_key(query, variables)
+        _save_to_cache(cache_key, result)
+    
+    return result
 
 def _iso_date(date_str: str) -> str:
     """Return YYYY-MM-DD from an ISO datetime string."""
@@ -354,6 +403,7 @@ def get_issues_from_repo(token: str, org: str, repo_name: str, target_projects: 
         cutoff_date = (datetime.now() - timedelta(days=days_filter)).isoformat()
         date_filter = f', filterBy: {{since: "{cutoff_date}"}}'
     
+    # Query otimizada - busca apenas campos necessários
     query = f"""
     query($owner: String!, $repo: String!, $cursor: String) {{
       repository(owner: $owner, name: $repo) {{
@@ -364,15 +414,12 @@ def get_issues_from_repo(token: str, org: str, repo_name: str, target_projects: 
             title
             state
             closedAt
-            updatedAt
-            createdAt
             projectItems(first: 50) {{
               nodes {{
                 id
                 project {{
                   id
                   number
-                  title
                 }}
                 fieldValues(first: 50) {{
                   nodes {{
@@ -427,6 +474,86 @@ def get_issues_from_repo(token: str, org: str, repo_name: str, target_projects: 
         cursor = page_info.get("endCursor")
     
     return all_issues
+
+def get_issues_from_multiple_repos(token: str, org: str, repo_names: List[str], target_projects: List[Dict[str, Any]] = None, days_filter: int = 7) -> Dict[str, List[Dict[str, Any]]]:
+    """Obtém issues de múltiplos repositórios em uma única query GraphQL (otimização)"""
+    
+    if not repo_names:
+        return {}
+    
+    # Filtro por data (se days_filter > 0)
+    date_filter = ""
+    if days_filter > 0:
+        from datetime import datetime, timedelta
+        cutoff_date = (datetime.now() - timedelta(days=days_filter)).isoformat()
+        date_filter = f', filterBy: {{since: "{cutoff_date}"}}'
+    
+    # Query otimizada para múltiplos repositórios
+    query = f"""
+    query($org: String!) {{
+      organization(login: $org) {{
+        repositories(first: 100, names: {json.dumps(repo_names)}) {{
+          nodes {{
+            name
+            issues(first: 100, states: [OPEN, CLOSED], orderBy: {{field: UPDATED_AT, direction: DESC}}{date_filter}) {{
+              nodes {{
+                id
+                number
+                title
+                state
+                closedAt
+                projectItems(first: 50) {{
+                  nodes {{
+                    id
+                    project {{
+                      id
+                      number
+                    }}
+                    fieldValues(first: 50) {{
+                      nodes {{
+                        ... on ProjectV2ItemFieldSingleSelectValue {{
+                          field {{
+                            ... on ProjectV2FieldCommon {{
+                              name
+                            }}
+                          }}
+                          name
+                        }}
+                        ... on ProjectV2ItemFieldDateValue {{
+                          field {{
+                            ... on ProjectV2FieldCommon {{
+                              name
+                            }}
+                          }}
+                          date
+                        }}
+                      }}
+                    }}
+                  }}
+                }}
+              }}
+            }}
+          }}
+        }}
+      }}
+    }}
+    """
+    
+    try:
+        data = _graphql(token, query, {"org": org})
+        organization = data.get("organization", {})
+        repositories = organization.get("repositories", {}).get("nodes", [])
+        
+        result = {}
+        for repo in repositories:
+            repo_name = repo.get("name")
+            issues = repo.get("issues", {}).get("nodes", [])
+            result[repo_name] = issues
+        
+        return result
+    except Exception as e:
+        print(f"❌ Erro ao buscar issues de múltiplos repositórios: {e}")
+        return {}
 
 def has_relevant_issues(token: str, org: str, repo_name: str, target_projects: List[Dict[str, Any]], days_filter: int = 7) -> bool:
     """Verifica se o repositório tem issues em projetos alvo antes de processar tudo"""
@@ -673,6 +800,8 @@ Exemplos de uso:
   python scripts/issues_close_date.py --org "minha-org"             # Usa organização diferente
   python scripts/issues_close_date.py --field "Data Conclusão"      # Usa nome de campo diferente
   python scripts/issues_close_date.py --verbose                     # Modo verboso com mais detalhes
+  python scripts/issues_close_date.py --batch-repos 10              # Processa 10 repositórios por lote
+  python scripts/issues_close_date.py --no-cache                    # Desabilita cache (para debugging)
 
 Ordem de prioridade para projeto padrão:
   1. Argumento --projects (maior prioridade)
@@ -707,6 +836,13 @@ Ordem de prioridade para projeto padrão:
     parser.add_argument('--all-issues', 
                        action='store_true',
                        help='Processar TODOS os issues (sem filtro de data) - equivalente a --days 0')
+    parser.add_argument('--no-cache', 
+                       action='store_true',
+                       help='Desabilitar cache de queries (para debugging)')
+    parser.add_argument('--batch-repos', 
+                       type=int,
+                       default=5,
+                       help='Processar repositórios em lotes para otimização (padrão: 5)')
     
     return parser.parse_args()
 
@@ -832,60 +968,89 @@ def main():
             "repos_skipped_no_relevant_issues": 0,
             "repos_skipped_no_changes_needed": 0,
             "total_issues_found": 0,
-            "total_issues_processed": 0
+            "total_issues_processed": 0,
+            "cache_hits": 0,
+            "queries_executed": 0,
+            "batch_queries_used": 0
         }
         
-        for i, repo in enumerate(repos, 1):
-            if repo.get('archived', False):
-                print(f"\n⏭️  Pulando repositório arquivado: {repo['name']}")
-                continue
+        # Filtrar repositórios não arquivados
+        active_repos = [repo for repo in repos if not repo.get('archived', False)]
+        
+        if not active_repos:
+            print("❌ Nenhum repositório ativo encontrado para processar")
+            return
+        
+        print(f"📊 Processando {len(active_repos)} repositórios ativos em lotes de {args.batch_repos}")
+        
+        # Processar repositórios em lotes para otimização
+        batch_size = args.batch_repos
+        for batch_start in range(0, len(active_repos), batch_size):
+            batch_end = min(batch_start + batch_size, len(active_repos))
+            batch_repos = active_repos[batch_start:batch_end]
             
-            print(f"\n📁 Repositório {i}/{len(repos)}: {repo['name']}")
+            print(f"\n🔄 Processando lote {batch_start//batch_size + 1}: repositórios {batch_start + 1}-{batch_end}")
             
-            try:
-                # FILTRO INTELIGENTE 1: Verificar se repositório tem issues em projetos alvo
-                print(f"  🔍 Verificando se há issues em projetos alvo...")
-                if not has_relevant_issues(github_token, org, repo['name'], projects_with_field, days_filter):
-                    print(f"  ⏭️  Nenhum issue em projetos alvo encontrado - pulando repositório")
-                    optimization_stats["repos_skipped_no_relevant_issues"] += 1
-                    continue
+            # OTIMIZAÇÃO: Buscar issues de múltiplos repositórios em uma query
+            if len(batch_repos) > 1:
+                print(f"  🚀 Usando query otimizada para {len(batch_repos)} repositórios...")
+                repo_names = [repo['name'] for repo in batch_repos]
+                all_issues_by_repo = get_issues_from_multiple_repos(
+                    github_token, org, repo_names, projects_with_field, days_filter
+                )
+                optimization_stats["batch_queries_used"] += 1
+            else:
+                all_issues_by_repo = {}
+            
+            # Processar cada repositório do lote
+            for i, repo in enumerate(batch_repos, batch_start + 1):
+                repo_name = repo['name']
+                print(f"\n📁 Repositório {i}/{len(active_repos)}: {repo_name}")
                 
-                # Obter issues do repositório com filtros otimizados
-                print(f"  📥 Buscando issues...")
-                issues = get_issues_from_repo(github_token, org, repo['name'], projects_with_field, days_filter)
-                print(f"  📋 {len(issues)} issues encontrados")
-                optimization_stats["total_issues_found"] += len(issues)
-                
-                # FILTRO INTELIGENTE 2: Filtrar apenas issues que precisam de alteração baseado no Status
-                print(f"  🔍 Filtrando issues que precisam de alteração (Status != Done ou Status = Done sem data)...")
-                relevant_issues = filter_issues_that_need_processing(issues, projects_with_field, args.field)
-                print(f"  ✅ {len(relevant_issues)} issues precisam de processamento (filtrados {len(issues) - len(relevant_issues)})")
-                
-                if not relevant_issues:
-                    print(f"  ⏭️  Nenhum issue precisa de alteração - pulando processamento")
-                    optimization_stats["repos_skipped_no_changes_needed"] += 1
-                    continue
-                
-                optimization_stats["total_issues_processed"] += len(relevant_issues)
-                
-                # Processar apenas issues relevantes
-                for issue in relevant_issues:
-                    changes = process_issue_for_projects(
-                        github_token, issue, projects_with_field, args.field
-                    )
+                try:
+                    # Obter issues (da query em lote ou individual)
+                    if repo_name in all_issues_by_repo:
+                        issues = all_issues_by_repo[repo_name]
+                        print(f"  📥 Issues obtidos via query em lote")
+                    else:
+                        # Fallback para query individual
+                        print(f"  📥 Buscando issues individualmente...")
+                        issues = get_issues_from_repo(github_token, org, repo_name, projects_with_field, days_filter)
+                        optimization_stats["queries_executed"] += 1
                     
-                    # Acumular mudanças
-                    for key in total_changes:
-                        total_changes[key] += changes[key]
-                
-                # Pausa entre repositórios para não sobrecarregar a API
-                if i < len(repos):
-                    print("  ⏳ Aguardando 2 segundos antes do próximo repositório...")
-                    time.sleep(2)
+                    print(f"  📋 {len(issues)} issues encontrados")
+                    optimization_stats["total_issues_found"] += len(issues)
                     
-            except Exception as e:
-                print(f"❌ Erro ao processar repositório {repo['name']}: {e}")
-                total_changes["errors"] += 1
+                    # FILTRO INTELIGENTE: Filtrar apenas issues que precisam de alteração
+                    print(f"  🔍 Filtrando issues que precisam de alteração...")
+                    relevant_issues = filter_issues_that_need_processing(issues, projects_with_field, args.field)
+                    print(f"  ✅ {len(relevant_issues)} issues precisam de processamento (filtrados {len(issues) - len(relevant_issues)})")
+                    
+                    if not relevant_issues:
+                        print(f"  ⏭️  Nenhum issue precisa de alteração - pulando processamento")
+                        optimization_stats["repos_skipped_no_changes_needed"] += 1
+                        continue
+                    
+                    optimization_stats["total_issues_processed"] += len(relevant_issues)
+                    
+                    # Processar apenas issues relevantes
+                    for issue in relevant_issues:
+                        changes = process_issue_for_projects(
+                            github_token, issue, projects_with_field, args.field
+                        )
+                        
+                        # Acumular mudanças
+                        for key in total_changes:
+                            total_changes[key] += changes[key]
+                    
+                except Exception as e:
+                    print(f"❌ Erro ao processar repositório {repo_name}: {e}")
+                    total_changes["errors"] += 1
+            
+            # Pausa entre lotes para não sobrecarregar a API
+            if batch_end < len(active_repos):
+                print(f"  ⏳ Aguardando 3 segundos antes do próximo lote...")
+                time.sleep(3)
         
         # Resumo final
         print("\n" + "=" * 60)
@@ -898,11 +1063,17 @@ def main():
         
         # Estatísticas de otimização
         print("\n" + "=" * 60)
-        print("🚀 ESTATÍSTICAS DE OTIMIZAÇÃO (Filtros Inteligentes)")
+        print("🚀 ESTATÍSTICAS DE OTIMIZAÇÃO (Filtros Inteligentes + Consultas Otimizadas)")
         print(f"📈 Total de issues encontrados: {optimization_stats['total_issues_found']}")
         print(f"⚡ Issues processados (apenas os que precisavam de alteração no Status): {optimization_stats['total_issues_processed']}")
         print(f"⏭️  Repositórios pulados (sem issues em projetos alvo): {optimization_stats['repos_skipped_no_relevant_issues']}")
         print(f"⏭️  Repositórios pulados (sem alterações necessárias no Status): {optimization_stats['repos_skipped_no_changes_needed']}")
+        
+        # Estatísticas de consultas otimizadas
+        print(f"\n🔧 OTIMIZAÇÕES DE CONSULTAS:")
+        print(f"📊 Queries executadas: {optimization_stats['queries_executed']}")
+        print(f"🚀 Queries em lote utilizadas: {optimization_stats['batch_queries_used']}")
+        print(f"💾 Cache habilitado: {'Não' if args.no_cache else 'Sim'}")
         
         if optimization_stats['total_issues_found'] > 0:
             efficiency = (optimization_stats['total_issues_processed'] / optimization_stats['total_issues_found']) * 100
@@ -911,6 +1082,14 @@ def main():
         issues_saved = optimization_stats['total_issues_found'] - optimization_stats['total_issues_processed']
         if issues_saved > 0:
             print(f"💾 Issues economizados (não processados): {issues_saved}")
+        
+        # Calcular economia de requisições
+        total_queries = optimization_stats['queries_executed'] + optimization_stats['batch_queries_used']
+        if total_queries > 0:
+            repos_count = len(active_repos)
+            queries_saved = repos_count - total_queries
+            if queries_saved > 0:
+                print(f"⚡ Requisições economizadas (queries em lote): {queries_saved}")
         
         if total_changes["errors"] == 0:
             print("🎉 Todas as operações foram concluídas com sucesso!")

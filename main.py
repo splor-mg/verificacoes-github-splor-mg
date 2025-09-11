@@ -98,7 +98,7 @@ def run_projects_panels(org: str, verbose: bool = False) -> bool:
 
 def run_issues_close_date(org: str, panel: bool = False, projects: str = None, 
                          field: str = 'Data Fim', days: int = 7, all_issues: bool = False, 
-                         verbose: bool = False) -> bool:
+                         verbose: bool = False, no_cache: bool = False, batch_repos: int = 5) -> bool:
     """Executa o script issues_close_date.py"""
     try:
         print(f"\n🔧 Gerenciando campo '{field}' em projetos da organização: {org}")
@@ -123,6 +123,13 @@ def run_issues_close_date(org: str, panel: bool = False, projects: str = None,
         
         if verbose:
             sys.argv.append('--verbose')
+        
+        # Adicionar parâmetros de otimização
+        if no_cache:
+            sys.argv.append('--no-cache')
+        
+        if batch_repos != 5:  # Só adiciona se não for o padrão
+            sys.argv.extend(['--batch-repos', str(batch_repos)])
         
         # Executar o script
         issues_close_date_main()
@@ -167,6 +174,8 @@ Exemplos de uso:
   python main.py --issues-field "Data Conclusão"  # Campo customizado para issues
   python main.py --issues-days 30              # Processa issues dos últimos 30 dias
   python main.py --issues-all                  # Processa TODOS os issues (primeira execução)
+  python main.py --issues-no-cache             # Desabilita cache para debugging
+  python main.py --issues-batch-repos 10       # Processa 10 repositórios por lote
         """
     )
     
@@ -206,6 +215,10 @@ Exemplos de uso:
                        help='Processar issues dos últimos N dias (padrão: 7, use 0 para todos)')
     parser.add_argument('--issues-all', action='store_true',
                        help='Processar TODOS os issues (sem filtro de data) - equivalente a --issues-days 0')
+    parser.add_argument('--issues-no-cache', action='store_true',
+                       help='Desabilitar cache de queries para issues (para debugging)')
+    parser.add_argument('--issues-batch-repos', type=int, default=5,
+                       help='Processar repositórios em lotes para otimização de issues (padrão: 5)')
     
     args = parser.parse_args()
     
@@ -363,7 +376,9 @@ Exemplos de uso:
                     field=args.issues_field,
                     days=args.issues_days,
                     all_issues=args.issues_all,
-                    verbose=args.verbose
+                    verbose=args.verbose,
+                    no_cache=args.issues_no_cache,
+                    batch_repos=args.issues_batch_repos
                 ):
                     success = False
             except Exception as e:
