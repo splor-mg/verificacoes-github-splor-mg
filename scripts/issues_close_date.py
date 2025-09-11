@@ -338,56 +338,72 @@ def get_project_field_id(project: Dict[str, Any], field_name: str = DEFAULT_FIEL
             return field['id']
     return None
 
-def get_issues_from_repo(token: str, org: str, repo_name: str) -> List[Dict[str, Any]]:
-    """Obtém todos os issues de um repositório"""
-    query = """
-    query($owner: String!, $repo: String!, $cursor: String) {
-      repository(owner: $owner, name: $repo) {
-        issues(first: 100, after: $cursor, states: [OPEN, CLOSED]) {
-          nodes {
+def get_issues_from_repo(token: str, org: str, repo_name: str, target_projects: List[Dict[str, Any]] = None, days_filter: int = 7) -> List[Dict[str, Any]]:
+    """Obtém issues de um repositório com filtros inteligentes baseados em Status do projeto e data"""
+    
+    # Filtro inteligente 1: Buscar apenas issues que estão em projetos alvo
+    project_filter = ""
+    if target_projects:
+        project_ids = [project['id'] for project in target_projects]
+        project_filter = f', projectItems: {{first: 50, projectIds: {json.dumps(project_ids)}}}'
+    
+    # Filtro inteligente 2: Filtro por data (se days_filter > 0)
+    date_filter = ""
+    if days_filter > 0:
+        from datetime import datetime, timedelta
+        cutoff_date = (datetime.now() - timedelta(days=days_filter)).isoformat()
+        date_filter = f', filterBy: {{since: "{cutoff_date}"}}'
+    
+    query = f"""
+    query($owner: String!, $repo: String!, $cursor: String) {{
+      repository(owner: $owner, name: $repo) {{
+        issues(first: 100, after: $cursor, states: [OPEN, CLOSED], orderBy: {{field: UPDATED_AT, direction: DESC}}{date_filter}) {{
+          nodes {{
             id
             number
             title
             state
             closedAt
-            projectItems(first: 50) {
-              nodes {
+            updatedAt
+            createdAt
+            projectItems(first: 50) {{
+              nodes {{
                 id
-                project {
+                project {{
                   id
                   number
                   title
-                }
-                fieldValues(first: 50) {
-                  nodes {
-                    ... on ProjectV2ItemFieldSingleSelectValue {
-                      field {
-                        ... on ProjectV2FieldCommon {
+                }}
+                fieldValues(first: 50) {{
+                  nodes {{
+                    ... on ProjectV2ItemFieldSingleSelectValue {{
+                      field {{
+                        ... on ProjectV2FieldCommon {{
                           name
-                        }
-                      }
+                        }}
+                      }}
                       name
-                    }
-                    ... on ProjectV2ItemFieldDateValue {
-                      field {
-                        ... on ProjectV2FieldCommon {
+                    }}
+                    ... on ProjectV2ItemFieldDateValue {{
+                      field {{
+                        ... on ProjectV2FieldCommon {{
                           name
-                        }
-                      }
+                        }}
+                      }}
                       date
-                    }
-                  }
-                }
-              }
-            }
-          }
-          pageInfo {
+                    }}
+                  }}
+                }}
+              }}
+            }}
+          }}
+          pageInfo {{
             hasNextPage
             endCursor
-          }
-        }
-      }
-    }
+          }}
+        }}
+      }}
+    }}
     """
     
     all_issues = []
@@ -411,6 +427,97 @@ def get_issues_from_repo(token: str, org: str, repo_name: str) -> List[Dict[str,
         cursor = page_info.get("endCursor")
     
     return all_issues
+
+def has_relevant_issues(token: str, org: str, repo_name: str, target_projects: List[Dict[str, Any]], days_filter: int = 7) -> bool:
+    """Verifica se o repositório tem issues em projetos alvo antes de processar tudo"""
+    if not target_projects:
+        return True  # Se não há projetos alvo, processa tudo
+    
+    project_ids = [project['id'] for project in target_projects]
+    
+    # Filtro por data (se days_filter > 0)
+    date_filter = ""
+    if days_filter > 0:
+        from datetime import datetime, timedelta
+        cutoff_date = (datetime.now() - timedelta(days=days_filter)).isoformat()
+        date_filter = f', filterBy: {{since: "{cutoff_date}"}}'
+    
+    # Query otimizada para verificar apenas se existem issues em projetos
+    query = f"""
+    query($owner: String!, $repo: String!) {{
+      repository(owner: $owner, name: $repo) {{
+        issues(first: 1, states: [OPEN, CLOSED]{date_filter}) {{
+          nodes {{
+            projectItems(first: 1) {{
+              nodes {{
+                project {{
+                  id
+                }}
+              }}
+            }}
+          }}
+        }}
+      }}
+    }}
+    """
+    
+    try:
+        data = _graphql(token, query, {"owner": org, "repo": repo_name})
+        repository = data.get("repository")
+        if not repository:
+            return False
+            
+        issues = repository.get("issues", {}).get("nodes", [])
+        
+        # Verificar se algum issue está em algum projeto alvo
+        for issue in issues:
+            for project_item in issue.get("projectItems", {}).get("nodes", []):
+                project_id = project_item.get("project", {}).get("id")
+                if project_id in project_ids:
+                    return True
+        
+        return False
+    except Exception as e:
+        print(f"      ⚠️  Erro ao verificar issues relevantes: {e}")
+        return True  # Em caso de erro, processa para não perder dados
+
+def filter_issues_that_need_processing(issues: List[Dict[str, Any]], target_projects: List[Dict[str, Any]], field_name: str = DEFAULT_FIELD_NAME) -> List[Dict[str, Any]]:
+    """Filtra issues que precisam de processamento baseado no Status do projeto:
+    - Status != 'Done' e campo preenchido: precisa limpar campo
+    - Status = 'Done' e issue fechado e campo vazio: precisa preencher campo
+    """
+    filtered_issues = []
+    target_project_ids = {project['id'] for project in target_projects}
+    
+    for issue in issues:
+        issue_needs_processing = False
+        
+        # Verificar se o issue está em algum projeto alvo
+        for project_item in issue.get('projectItems', {}).get('nodes', []):
+            project_id = project_item.get('project', {}).get('id')
+            if project_id not in target_project_ids:
+                continue
+            
+            # Verificar se precisa de alteração baseado nas regras de negócio
+            status, current_date = get_project_item_status_and_date(project_item, field_name)
+            issue_state = issue.get('state')
+            issue_closed_at = issue.get('closedAt')
+            
+            if status and status.lower() != 'done':
+                # Status != "Done": campo deve estar vazio
+                if current_date:
+                    issue_needs_processing = True
+                    break
+            elif status and status.lower() == 'done':
+                # Status == "Done": campo deve ter data de fechamento
+                if not current_date and issue_closed_at and issue_state == 'CLOSED':
+                    issue_needs_processing = True
+                    break
+        
+        if issue_needs_processing:
+            filtered_issues.append(issue)
+    
+    return filtered_issues
 
 def get_project_item_status_and_date(project_item: Dict[str, Any], field_name: str = DEFAULT_FIELD_NAME) -> tuple[Optional[str], Optional[str]]:
     """Obtém o status e a data do campo especificado do item do projeto"""
@@ -558,7 +665,9 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemplos de uso:
-  python scripts/issues_close_date.py                               # Usa projeto do .env ou padrão hardcoded
+  python scripts/issues_close_date.py                               # Usa projeto do .env, últimos 7 dias (padrão)
+  python scripts/issues_close_date.py --days 30                     # Processa issues dos últimos 30 dias
+  python scripts/issues_close_date.py --all-issues                  # Processa TODOS os issues (primeira execução)
   python scripts/issues_close_date.py --panel                       # Seleção interativa de projetos
   python scripts/issues_close_date.py --projects "1,2,3"            # Processa apenas projetos específicos (números)
   python scripts/issues_close_date.py --org "minha-org"             # Usa organização diferente
@@ -591,6 +700,13 @@ Ordem de prioridade para projeto padrão:
     parser.add_argument('--verbose', '-v', 
                        action='store_true',
                        help='Modo verboso com mais detalhes')
+    parser.add_argument('--days', 
+                       type=int,
+                       default=7,
+                       help='Processar issues criados/modificados nos últimos N dias (padrão: 7, use 0 para todos)')
+    parser.add_argument('--all-issues', 
+                       action='store_true',
+                       help='Processar TODOS os issues (sem filtro de data) - equivalente a --days 0')
     
     return parser.parse_args()
 
@@ -618,12 +734,23 @@ def main():
     # Aplicar hierarquia de priorização (argumentos > env vars > padrões)
     org = args.org or os.getenv("GITHUB_ORG") or DEFAULT_ORG
     
+    # Processar argumentos de filtro de data
+    days_filter = 0 if args.all_issues else args.days
+    
     # Mostrar configurações aplicadas
     print(f"\n🔧 Configurações aplicadas:")
     print(f"   Organização: {org}")
     print(f"   Arquivo de repositórios: {args.repos_file}")
     print(f"   Arquivo de projetos: {args.projects_list}")
     print(f"   Campo: {args.field}")
+    
+    # Mostrar filtro de data aplicado
+    if args.all_issues:
+        print(f"   Filtro de data: TODOS os issues (--all-issues)")
+    elif days_filter == 0:
+        print(f"   Filtro de data: TODOS os issues (--days 0)")
+    else:
+        print(f"   Filtro de data: últimos {days_filter} dias (--days {days_filter})")
     
     # Mostrar qual valor foi aplicado e de onde veio
     if args.org:
@@ -701,6 +828,12 @@ def main():
         
         # Processar cada repositório
         total_changes = {"cleared": 0, "set": 0, "errors": 0}
+        optimization_stats = {
+            "repos_skipped_no_relevant_issues": 0,
+            "repos_skipped_no_changes_needed": 0,
+            "total_issues_found": 0,
+            "total_issues_processed": 0
+        }
         
         for i, repo in enumerate(repos, 1):
             if repo.get('archived', False):
@@ -710,12 +843,33 @@ def main():
             print(f"\n📁 Repositório {i}/{len(repos)}: {repo['name']}")
             
             try:
-                # Obter issues do repositório
-                issues = get_issues_from_repo(github_token, org, repo['name'])
-                print(f"  📋 {len(issues)} issues encontrados")
+                # FILTRO INTELIGENTE 1: Verificar se repositório tem issues em projetos alvo
+                print(f"  🔍 Verificando se há issues em projetos alvo...")
+                if not has_relevant_issues(github_token, org, repo['name'], projects_with_field, days_filter):
+                    print(f"  ⏭️  Nenhum issue em projetos alvo encontrado - pulando repositório")
+                    optimization_stats["repos_skipped_no_relevant_issues"] += 1
+                    continue
                 
-                # Processar cada issue
-                for issue in issues:
+                # Obter issues do repositório com filtros otimizados
+                print(f"  📥 Buscando issues...")
+                issues = get_issues_from_repo(github_token, org, repo['name'], projects_with_field, days_filter)
+                print(f"  📋 {len(issues)} issues encontrados")
+                optimization_stats["total_issues_found"] += len(issues)
+                
+                # FILTRO INTELIGENTE 2: Filtrar apenas issues que precisam de alteração baseado no Status
+                print(f"  🔍 Filtrando issues que precisam de alteração (Status != Done ou Status = Done sem data)...")
+                relevant_issues = filter_issues_that_need_processing(issues, projects_with_field, args.field)
+                print(f"  ✅ {len(relevant_issues)} issues precisam de processamento (filtrados {len(issues) - len(relevant_issues)})")
+                
+                if not relevant_issues:
+                    print(f"  ⏭️  Nenhum issue precisa de alteração - pulando processamento")
+                    optimization_stats["repos_skipped_no_changes_needed"] += 1
+                    continue
+                
+                optimization_stats["total_issues_processed"] += len(relevant_issues)
+                
+                # Processar apenas issues relevantes
+                for issue in relevant_issues:
                     changes = process_issue_for_projects(
                         github_token, issue, projects_with_field, args.field
                     )
@@ -741,6 +895,22 @@ def main():
         print(f"✅ Campos limpos: {total_changes['cleared']}")
         print(f"📅 Campos preenchidos: {total_changes['set']}")
         print(f"❌ Erros encontrados: {total_changes['errors']}")
+        
+        # Estatísticas de otimização
+        print("\n" + "=" * 60)
+        print("🚀 ESTATÍSTICAS DE OTIMIZAÇÃO (Filtros Inteligentes)")
+        print(f"📈 Total de issues encontrados: {optimization_stats['total_issues_found']}")
+        print(f"⚡ Issues processados (apenas os que precisavam de alteração no Status): {optimization_stats['total_issues_processed']}")
+        print(f"⏭️  Repositórios pulados (sem issues em projetos alvo): {optimization_stats['repos_skipped_no_relevant_issues']}")
+        print(f"⏭️  Repositórios pulados (sem alterações necessárias no Status): {optimization_stats['repos_skipped_no_changes_needed']}")
+        
+        if optimization_stats['total_issues_found'] > 0:
+            efficiency = (optimization_stats['total_issues_processed'] / optimization_stats['total_issues_found']) * 100
+            print(f"🎯 Eficiência: {efficiency:.1f}% dos issues processados realmente precisavam de alteração")
+        
+        issues_saved = optimization_stats['total_issues_found'] - optimization_stats['total_issues_processed']
+        if issues_saved > 0:
+            print(f"💾 Issues economizados (não processados): {issues_saved}")
         
         if total_changes["errors"] == 0:
             print("🎉 Todas as operações foram concluídas com sucesso!")

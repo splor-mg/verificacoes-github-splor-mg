@@ -42,15 +42,21 @@ projects-list = { cmd = "python main.py --projects-list", help = "Atualiza lista
 projects-update = { cmd = "python main.py --projects-panels --projects-list", help = "Atualiza ambos os arquivos de projetos" }
 
 # Tasks para issues e campos de data
-issues-close-date = { cmd = "python main.py --issues-close-date", help = "Gerencia campo Data Fim em projetos GitHub" }
-issues-panel = { cmd = "python main.py --issues-panel", help = "Seleção interativa de projetos para gerenciar issues" }
-issues-projects = { cmd = "python main.py --issues-projects", help = "Gerencia issues em projetos específicos (use: task issues-projects 1,2,3)" }
-issues-field = { cmd = "python main.py --issues-field", help = "Usa campo customizado para issues (use: task issues-field 'Data Conclusão')" }
+issues-close-date = { cmd = "python main.py --issues-close-date", help = "Gerencia campo Data Fim em projetos GitHub (últimos 7 dias)" }
+issues-close-date-panel = { cmd = "python main.py --issues-close-date-panel", help = "Seleção interativa de projetos para gerenciar issues" }
+issues-close-date-projects = { cmd = "python main.py --issues-close-date-projects", help = "Gerencia issues em projetos específicos (use: task issues-close-date-projects 1,2,3)" }
+issues-close-date-field = { cmd = "python main.py --issues-close-date-field", help = "Usa campo customizado para issues (use: task issues-close-date-field 'Data Conclusão')" }
+issues-close-date-days-30 = { cmd = "python main.py --issues-close-date --issues-days 30", help = "Processa issues dos últimos 30 dias" }
+issues-close-date-days-90 = { cmd = "python main.py --issues-close-date --issues-days 90", help = "Processa issues dos últimos 90 dias" }
+issues-close-date-all = { cmd = "python main.py --issues-close-date --issues-all", help = "Processa TODOS os issues (primeira execução)" }
 update-workflow-options = { cmd = "python scripts/update_workflow_options.py", help = "Atualiza opções de projetos no workflow GitHub Actions dinamicamente" }
 
 # Tasks combinadas
 projects-and-issues = { cmd = "python main.py --projects-panels --issues-panel", help = "Atualiza projetos e gerencia issues com seleção interativa" }
+projects-and-issues-all = { cmd = "python main.py --projects-panels --issues-close-date --issues-all", help = "Atualiza projetos e processa TODOS os issues" }
+projects-and-issues-30 = { cmd = "python main.py --projects-panels --issues-close-date --issues-days 30", help = "Atualiza projetos e processa issues dos últimos 30 dias" }
 full-workflow = { cmd = "python main.py --all --projects-panels --issues-panel", help = "Executa workflow completo: labels, repositórios, projetos e issues" }
+full-workflow-all-issues = { cmd = "python main.py --all --projects-panels --issues-close-date --issues-all", help = "Executa workflow completo processando TODOS os issues" }
 
 # Tasks de setup
 install-dev = "poetry install --with dev"

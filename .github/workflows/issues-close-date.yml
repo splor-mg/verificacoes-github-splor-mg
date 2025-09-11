@@ -14,24 +14,30 @@ on:
           - 'sim'
           - 'não'
       organization:
-        description: 'Organization name to sync issues for'
+        description: 'Organização na qual atualizar issues'
         required: true
-        default: 'aid-pilot'
+        default: 'splor-mg'
       project_number:
-        description: "Project to sync issues for"
+        description: 'Projectos nos quais atualizar issues'
         required: true
         default: "13 - Gestão à Vista AID"
         type: choice
         options:
           - "13 - Gestão à Vista AID"
           - "16 - Gestão Gabinete SPLOR"
-
-
-
       field_name:
         description: "Project Date field to set"
         required: true
         default: "Data Fim"
+      period_to_apply:
+        description: "Processar criados/modificados no período"
+        required: true
+        default: "1 - últimos 7 dias"
+        type: choice
+        options:
+          - "1 - últimos 7 dias"
+          - "2 - últimos 30 dias"
+          - "3 - todos"
 
 jobs:
   set-end-date:
@@ -124,15 +130,43 @@ jobs:
           echo "project_number=$PROJECT_NUMBER" >> $GITHUB_OUTPUT
           echo "Selected project: $PROJECT_SELECTION (Number: $PROJECT_NUMBER)"
 
+      - name: Process period selection
+        if: inputs.update_project_list == 'não'
+        id: process_period
+        run: |
+          # Processar seleção de período
+          PERIOD_SELECTION="${{ inputs.period_to_apply }}"
+          case "$PERIOD_SELECTION" in
+            "1 - últimos 7 dias")
+              echo "period_args=" >> $GITHUB_OUTPUT
+              echo "period_description=últimos 7 dias" >> $GITHUB_OUTPUT
+              ;;
+            "2 - últimos 30 dias")
+              echo "period_args=--days 30" >> $GITHUB_OUTPUT
+              echo "period_description=últimos 30 dias" >> $GITHUB_OUTPUT
+              ;;
+            "3 - todos")
+              echo "period_args=--all-issues" >> $GITHUB_OUTPUT
+              echo "period_description=todos os issues" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "period_args=" >> $GITHUB_OUTPUT
+              echo "period_description=últimos 7 dias (padrão)" >> $GITHUB_OUTPUT
+              ;;
+          esac
+          echo "Processando issues: $PERIOD_SELECTION"
+
       - name: Sync Project field on issue close
         if: inputs.update_project_list == 'não'
         run: |
           echo "🔧 Gerenciando campo '${{ inputs.field_name }}' para projeto ${{ steps.extract_project.outputs.project_number }}"
+          echo "📅 Período: ${{ steps.process_period.outputs.period_description }}"
           poetry run python main.py \
             --issues-close-date \
             --issues-projects "${{ steps.extract_project.outputs.project_number }}" \
             --issues-field "${{ inputs.field_name }}" \
-            --org "${{ inputs.organization }}"
+            --org "${{ inputs.organization }}" \
+            ${{ steps.process_period.outputs.period_args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_ORG: ${{ inputs.organization }}

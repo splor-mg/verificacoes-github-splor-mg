@@ -97,7 +97,8 @@ def run_projects_panels(org: str, verbose: bool = False) -> bool:
 
 
 def run_issues_close_date(org: str, panel: bool = False, projects: str = None, 
-                         field: str = 'Data Fim', verbose: bool = False) -> bool:
+                         field: str = 'Data Fim', days: int = 7, all_issues: bool = False, 
+                         verbose: bool = False) -> bool:
     """Executa o script issues_close_date.py"""
     try:
         print(f"\n🔧 Gerenciando campo '{field}' em projetos da organização: {org}")
@@ -113,6 +114,12 @@ def run_issues_close_date(org: str, panel: bool = False, projects: str = None,
             sys.argv.append('--panel')
         elif projects:
             sys.argv.extend(['--projects', projects])
+        
+        # Adicionar filtros de data
+        if all_issues:
+            sys.argv.append('--all-issues')
+        elif days != 7:  # Só adiciona se não for o padrão
+            sys.argv.extend(['--days', str(days)])
         
         if verbose:
             sys.argv.append('--verbose')
@@ -154,10 +161,12 @@ Exemplos de uso:
   python main.py --projects-list               # Atualiza lista de projetos (projects-panels-list.yml)
   
   # Issues e campos de data
-  python main.py --issues-close-date           # Gerencia campo Data Fim em projetos
+  python main.py --issues-close-date           # Gerencia campo Data Fim em projetos (últimos 7 dias)
   python main.py --issues-panel                # Seleção interativa de projetos para issues
   python main.py --issues-projects "1,2,3"     # Projetos específicos para issues
   python main.py --issues-field "Data Conclusão"  # Campo customizado para issues
+  python main.py --issues-days 30              # Processa issues dos últimos 30 dias
+  python main.py --issues-all                  # Processa TODOS os issues (primeira execução)
         """
     )
     
@@ -193,6 +202,10 @@ Exemplos de uso:
                        help='Projetos específicos para issues (números separados por vírgula)')
     parser.add_argument('--issues-field', type=str, default='Data Fim',
                        help='Nome do campo de data para issues (padrão: Data Fim)')
+    parser.add_argument('--issues-days', type=int, default=7,
+                       help='Processar issues dos últimos N dias (padrão: 7, use 0 para todos)')
+    parser.add_argument('--issues-all', action='store_true',
+                       help='Processar TODOS os issues (sem filtro de data) - equivalente a --issues-days 0')
     
     args = parser.parse_args()
     
@@ -348,6 +361,8 @@ Exemplos de uso:
                     panel=panel_mode,
                     projects=args.issues_projects,
                     field=args.issues_field,
+                    days=args.issues_days,
+                    all_issues=args.issues_all,
                     verbose=args.verbose
                 ):
                     success = False
