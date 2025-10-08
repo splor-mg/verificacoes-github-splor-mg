@@ -31,11 +31,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import requests
 import yaml
+from scripts.github_app_auth import get_github_app_installation_token
 
 # Configurações padrão
 DEFAULT_ORG = 'splor-mg'
-DEFAULT_OUTPUT = 'docs/projects-panels.yml'
-DEFAULT_LIST_OUTPUT = 'docs/projects-panels-list.yml'
+DEFAULT_OUTPUT = 'config/projects-panels.yml'
+DEFAULT_LIST_OUTPUT = 'config/projects-panels-list.yml'
 
 # Load environment variables from .env file
 def load_dotenv():
@@ -286,8 +287,8 @@ def main() -> None:
     # Carregar variáveis de ambiente
     load_dotenv()
     
-    # Get GitHub token
-    token = os.getenv("GITHUB_TOKEN") or _require_env("GITHUB_TOKEN")
+    # Get GitHub token via GitHub App
+    token = get_github_app_installation_token()
     
     # Aplicar hierarquia de priorização (argumentos > env vars > padrões)
     # 1. Argumentos da linha de comando (maior prioridade)
@@ -306,7 +307,7 @@ def main() -> None:
         print(f"   Organização: {org}")
         print(f"   Arquivo de saída: {output}")
         print(f"   Arquivo de lista: {list_output}")
-        print(f"   Token: {token[:8]}...")
+        print(f"   Token (App): {token[:8]}...")
     
     try:
         # Get all projects from organization

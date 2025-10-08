@@ -9,12 +9,13 @@ import logging
 from pathlib import Path
 from typing import Optional, List
 from scripts.repos_list import sync_organization_labels, get_github_repos, export_to_csv
+from scripts.github_app_auth import get_github_app_installation_token
 from scripts.labels_sync import sync_labels_for_repo
 from scripts.projects_panels import main as projects_panels_main
 from scripts.issues_close_date import main as issues_close_date_main
 
 DEFAULT_ORG = 'splor-mg'
-DEFAULT_LABELS_FILE = 'docs/labels.yaml'
+DEFAULT_LABELS_FILE = 'config/labels.yaml'
 
 # Configuração de logging
 def setup_logging(verbose: bool = False) -> None:
@@ -25,7 +26,7 @@ def setup_logging(verbose: bool = False) -> None:
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler('github_management.log')
+            logging.FileHandler('logs/github_management.log')
         ]
     )
 
@@ -45,29 +46,33 @@ def load_environment() -> dict:
     else:
         print(f"⚠️  Arquivo {env_file} não encontrado")
     
-    # Retorna configurações
+    # Retorna configurações (sem exigir PAT)
     return {
-        'github_token': os.getenv('GITHUB_TOKEN'),
         'github_org': os.getenv('GITHUB_ORG', DEFAULT_ORG),
         'labels_file': os.getenv('GITHUB_LABELS_FILE', DEFAULT_LABELS_FILE)
     }
 
 def validate_config(config: dict) -> bool:
     """Valida se a configuração está correta"""
-    if not config['github_token']:
-        print("❌ GITHUB_TOKEN não encontrado!")
-        print("💡 Configure a variável GITHUB_TOKEN no arquivo .env")
+    # Validar variáveis do GitHub App gerando um token de instalação
+    try:
+        token = get_github_app_installation_token()
+        print(f"🔑 Token de instalação obtido: {token[:8]}...")
+        config['github_token'] = token
+    except Exception as e:
+        print(f"❌ Falha ao gerar token do GitHub App: {e}")
+        print("💡 Defina GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID e GITHUB_APP_PRIVATE_KEY(_PATH)")
         return False
     
     print(f"🔧 Configurações:")
     print(f"   Organização: {config['github_org']}")
     print(f"   Arquivo de labels: {config['labels_file']}")
-    print(f"   Token: {config['github_token'][:8]}...")
+    print(f"   Token (App): {config['github_token'][:8]}...")
     
     return True
 
 
-def run_projects_panels(org: str, verbose: bool = False) -> bool:
+def run_projects_panels(org: str, verbose: bool = False, output: str = None, list_output: str = None) -> bool:
     """Executa o script projects_panels.py"""
     try:
         print(f"\n📊 Atualizando dados dos projetos da organização: {org}")
@@ -78,6 +83,10 @@ def run_projects_panels(org: str, verbose: bool = False) -> bool:
         
         # Configurar argumentos para projects_panels.py
         sys.argv = ['projects_panels.py', '--org', org]
+        if output:
+            sys.argv.extend(['--output', output])
+        if list_output:
+            sys.argv.extend(['--list-output', list_output])
         if verbose:
             sys.argv.append('--verbose')
         
@@ -97,7 +106,8 @@ def run_projects_panels(org: str, verbose: bool = False) -> bool:
 
 
 def run_issues_close_date(org: str, panel: bool = False, projects: str = None, 
-                         field: str = 'Data Fim', verbose: bool = False) -> bool:
+                         field: str = 'Data Fim', verbose: bool = False, 
+                         repos_file: str = None, projects_list: str = None) -> bool:
     """Executa o script issues_close_date.py"""
     try:
         print(f"\n🔧 Gerenciando campo '{field}' em projetos da organização: {org}")
@@ -113,6 +123,11 @@ def run_issues_close_date(org: str, panel: bool = False, projects: str = None,
             sys.argv.append('--panel')
         elif projects:
             sys.argv.extend(['--projects', projects])
+        
+        if repos_file:
+            sys.argv.extend(['--repos-file', repos_file])
+        if projects_list:
+            sys.argv.extend(['--projects-list', projects_list])
         
         if verbose:
             sys.argv.append('--verbose')
@@ -140,33 +155,34 @@ def main():
         epilog="""
 Exemplos de uso:
   # Labels e repositórios
-  python main.py --sync-org                    # Sincroniza labels da organização
   python main.py --list-repos                  # Lista repositórios
-  python main.py --sync-repos                  # Sincroniza labels nos repositórios
+  python main.py --sync-labels           # Sincroniza labels nos repositórios
   python main.py --all                         # Executa todas as operações
   python main.py --verbose                     # Modo verboso
-  python main.py --sync-repos --delete-extras  # Sincroniza e remove labels extras
-  python main.py --org minha-org --repos repo1,repo2  # Sincroniza organização e repositórios específicos
+  python main.py --sync-labels --delete-extras  # Sincroniza e remove labels extras
+  python main.py --org minha-org --repos repo1,repo2  # Sincroniza repositórios específicos
   python main.py --labels /caminho/labels.yaml  # Usa arquivo de labels customizado
   
   # Projetos GitHub
   python main.py --projects-panels             # Atualiza dados dos projetos (projects-panels.yml)
   python main.py --projects-list               # Atualiza lista de projetos (projects-panels-list.yml)
+  python main.py --projects-output "meus_projetos.yml"  # Arquivo de saída customizado
+  python main.py --projects-list-output "lista.yml"     # Arquivo de lista customizado
   
   # Issues e campos de data
   python main.py --issues-close-date           # Gerencia campo Data Fim em projetos
   python main.py --issues-panel                # Seleção interativa de projetos para issues
   python main.py --issues-projects "1,2,3"     # Projetos específicos para issues
   python main.py --issues-field "Data Conclusão"  # Campo customizado para issues
+  python main.py --issues-repos-file "repos.csv"  # Arquivo de repositórios customizado
+  python main.py --issues-projects-list "projetos.yml"  # Arquivo de projetos customizado
         """
     )
     
     # Argumentos
-    parser.add_argument('--sync-org', action='store_true', 
-                       help='Sincroniza labels padrão da organização')
     parser.add_argument('--list-repos', action='store_true',
                        help='Lista repositórios da organização')
-    parser.add_argument('--sync-repos', action='store_true',
+    parser.add_argument('--sync-labels', action='store_true',
                        help='Sincroniza labels em todos os repositórios')
     parser.add_argument('--all', action='store_true',
                        help='Executa todas as operações')
@@ -183,6 +199,10 @@ Exemplos de uso:
                        help='Atualiza dados dos projetos GitHub (projects-panels.yml)')
     parser.add_argument('--projects-list', action='store_true',
                        help='Atualiza lista de projetos (projects-panels-list.yml)')
+    parser.add_argument('--projects-output', type=str,
+                       help='Arquivo de saída para dados completos dos projetos (padrão: config/projects-panels.yml)')
+    parser.add_argument('--projects-list-output', type=str,
+                       help='Arquivo de saída para lista de projetos (padrão: config/projects-panels-list.yml)')
     
     # Argumentos para issues
     parser.add_argument('--issues-close-date', action='store_true',
@@ -193,11 +213,15 @@ Exemplos de uso:
                        help='Projetos específicos para issues (números separados por vírgula)')
     parser.add_argument('--issues-field', type=str, default='Data Fim',
                        help='Nome do campo de data para issues (padrão: Data Fim)')
+    parser.add_argument('--issues-repos-file', type=str,
+                       help='Arquivo CSV com lista de repositórios para issues (padrão: config/repos_list.csv)')
+    parser.add_argument('--issues-projects-list', type=str,
+                       help='Arquivo YAML com lista de projetos para issues (padrão: config/projects-panels-list.yml)')
     
     args = parser.parse_args()
     
     # Se nenhum argumento foi fornecido, mostra ajuda
-    if not any([args.sync_org, args.list_repos, args.sync_repos, args.all, 
+    if not any([args.list_repos, args.sync_labels, args.all, 
                 args.projects_panels, args.projects_list, args.issues_close_date, args.issues_panel]):
         parser.print_help()
         return
@@ -224,20 +248,6 @@ Exemplos de uso:
     success = True
     
     try:
-        # Executa operações baseado nos argumentos
-        if args.all or args.sync_org:
-            try:
-                print(f"\n🔄 Sincronizando organização: {config['github_org']}")
-                sync_organization_labels(
-                    config['github_org'], 
-                    config['github_token'], 
-                    config['labels_file']
-                )
-                print("✅ Sincronização da organização concluída!")
-            except Exception as e:
-                print(f"❌ Erro na sincronização da organização: {e}")
-                logging.error(f"Erro na sincronização da organização: {e}")
-                success = False
         
         if args.all or args.list_repos:
             try:
@@ -245,12 +255,12 @@ Exemplos de uso:
                 repos = get_github_repos(config['github_org'], config['github_token'])
                 
                 if repos:
-                    # Cria diretório docs se não existir
-                    docs_dir = Path('docs')
-                    docs_dir.mkdir(exist_ok=True)
+                    # Cria diretório config se não existir
+                    config_dir = Path('config')
+                    config_dir.mkdir(exist_ok=True)
                     
                     # Exporta para CSV
-                    filename = docs_dir / 'repos_list.csv'
+                    filename = config_dir / 'repos_list.csv'
                     export_to_csv(repos, str(filename))
                     
                     # Mostra alguns exemplos
@@ -267,7 +277,7 @@ Exemplos de uso:
                 logging.error(f"Erro ao listar repositórios: {e}")
                 success = False
         
-        if args.all or args.sync_repos:
+        if args.all or args.sync_labels:
             try:
                 print(f"\n🏷️  Sincronizando labels nos repositórios da organização: {config['github_org']}")
                 
@@ -331,7 +341,8 @@ Exemplos de uso:
         # Executar comandos de projetos
         if args.all or args.projects_panels or args.projects_list:
             try:
-                if not run_projects_panels(config['github_org'], args.verbose):
+                if not run_projects_panels(config['github_org'], args.verbose, 
+                                         args.projects_output, args.projects_list_output):
                     success = False
             except Exception as e:
                 print(f"❌ Erro ao executar projects_panels: {e}")
@@ -348,7 +359,9 @@ Exemplos de uso:
                     panel=panel_mode,
                     projects=args.issues_projects,
                     field=args.issues_field,
-                    verbose=args.verbose
+                    verbose=args.verbose,
+                    repos_file=args.issues_repos_file,
+                    projects_list=args.issues_projects_list
                 ):
                     success = False
             except Exception as e:

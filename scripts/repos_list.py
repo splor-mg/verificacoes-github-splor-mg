@@ -3,6 +3,7 @@ import csv
 import os
 import yaml
 from datetime import datetime
+from scripts.github_app_auth import get_github_app_installation_token
 
 
 
@@ -54,7 +55,13 @@ def get_github_repos(organization, token=None):
         headers['Authorization'] = f'token {token}'
         print(f"🔑 Usando token: {token[:8]}...")
     else:
-        print("⚠️  Nenhum token fornecido - acesso limitado")
+        # Gera token do App como fallback
+        try:
+            token = get_github_app_installation_token()
+            headers['Authorization'] = f'token {token}'
+            print(f"🔑 Usando token (App): {token[:8]}...")
+        except Exception:
+            print("⚠️  Nenhum token fornecido - acesso limitado")
     
     while True:
         url = f'https://api.github.com/orgs/{organization}/repos'

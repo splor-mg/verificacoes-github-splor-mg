@@ -26,13 +26,20 @@ jobs:
       contents: write
       pull-requests: write
     env:
-      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
       GITHUB_ORG: ${{ github.event.inputs.organization }}
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.GITHUB_APP_ID }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ inputs.organization }}
+
       - name: Checkout current repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -78,7 +85,7 @@ jobs:
             exit 1
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: ${{ inputs.organization }}
 
       - name: Sync Labels for all repositories
@@ -88,15 +95,15 @@ jobs:
           # Determinar se deve deletar labels extras
           if [ "${{ inputs.delete-extras }}" = "sim" ]; then
             echo "🗑️  Modo: Sincronizar labels E deletar labels extras"
-            poetry run python main.py --sync-repos --delete-extras
+            poetry run python main.py --sync-labels --delete-extras
           else
             echo "⏭️  Modo: Sincronizar labels SEM deletar labels extras (padrão)"
-            poetry run python main.py --sync-repos
+            poetry run python main.py --sync-labels
           fi
           
           echo "✅ Sincronização concluída para todos os repositórios"
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: ${{ inputs.organization }}
 
       - name: Commit and push changes

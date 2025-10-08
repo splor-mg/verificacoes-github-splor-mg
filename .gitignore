@@ -80,8 +80,12 @@ celerybeat-schedule
 # profiling
 .prof
 
-# Other
+# Logs
+logs/*.log
 *.log
+!logs/README.md
+
+# Other
 *.tmp
 *.bak
 *.swp

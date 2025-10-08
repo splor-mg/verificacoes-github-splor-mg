@@ -11,11 +11,12 @@ import os
 import time
 import argparse
 from datetime import datetime
+from scripts.github_app_auth import get_github_app_installation_token
 
 # Configurações padrão
 organization = 'splor-mg'
-repos_file = 'docs/repos_list.csv'
-labels_file = 'docs/labels.yaml'
+repos_file = 'config/repos_list.csv'
+labels_file = 'config/labels.yaml'
 
 def parse_arguments():
     """Parse command line arguments"""
@@ -39,7 +40,7 @@ Exemplos de uso:
                        action='store_true',
                        help='Remove labels extras para manter 100% sincronizado')
     parser.add_argument('--labels', 
-                       help='Arquivo YAML com labels (padrão: docs/labels.yaml)')
+                       help='Arquivo YAML com labels (padrão: config/labels.yaml)')
     
     return parser.parse_args()
 
@@ -131,7 +132,7 @@ def load_labels_from_yaml(yaml_file):
     
     return labels
 
-def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=True):
+def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=False):
     """Sincroniza labels para um repositório específico"""
     print(f"\n🔄 Processando repositório: {organization}/{repo_name}")
     
@@ -280,7 +281,7 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=T
     print(f"  📊 Resumo: {success_count} labels processadas, {deleted_count} deletadas, {error_count} erros")
     return success_count, deleted_count, error_count
 
-def sync_single_repo(repo_full_name, labels, token, delete_extras=True):
+def sync_single_repo(repo_full_name, labels, token, delete_extras=False):
     """Sincroniza labels para um repositório específico (formato: org/repo)"""
     if '/' not in repo_full_name:
         print(f"❌ Formato inválido: {repo_full_name}. Use: org/repo")
@@ -305,15 +306,13 @@ def main():
     # Carregar variáveis de ambiente
     load_env()
     
-    # Obter token do GitHub
-    github_token = os.getenv('GITHUB_TOKEN')
-    
-    if not github_token:
-        print("❌ GITHUB_TOKEN não encontrado!")
-        print("💡 Certifique-se de que o arquivo .env contém: GITHUB_TOKEN=seu_token_aqui")
+    # Obter token do GitHub via App
+    try:
+        github_token = get_github_app_installation_token()
+        print(f"🔑 Usando token (App): {github_token[:8]}...")
+    except Exception as e:
+        print(f"❌ Falha ao gerar token do GitHub App: {e}")
         return
-    
-    print(f"🔑 Usando token: {github_token[:8]}...")
     
     # Configurar parâmetros baseado nos argumentos
     if args.org:
