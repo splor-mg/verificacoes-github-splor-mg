@@ -1,0 +1,14 @@
+# Tipos padrão para classificação de issues na organização
+# Configuração de Tipos de Issues para GitHub -> https://github.com/organizations/MINHA-ORGANIZACAO/settings/issue-types/
+# Este arquivo define os tipos de issues utilizados nos projetos
+
+issue_types:
+  - name: 1 - Alta
+    description: "Issue de alta prioridade que requer atenção imediata e pode impactar significativamente o projeto"
+    color: red
+  - name: 2 - Média
+    description: "Issue de prioridade média que deve ser tratada em prazo razoável, mas não é crítica"
+    color: yellow
+  - name: 3 - Baixa
+    description: "Issue de baixa prioridade que pode ser tratada quando houver disponibilidade de tempo e recursos"
+    color: blue
