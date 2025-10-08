@@ -41,11 +41,12 @@ from typing import Any, Dict, List, Optional
 
 import requests
 import yaml
+from scripts.github_app_auth import get_github_app_installation_token
 
 # Configurações padrão
 DEFAULT_ORG = 'splor-mg'
-DEFAULT_REPOS_FILE = 'docs/repos_list.csv'
-DEFAULT_PROJECTS_LIST = 'docs/projects-panels-list.yml'
+DEFAULT_REPOS_FILE = 'config/repos_list.csv'
+DEFAULT_PROJECTS_LIST = 'config/projects-panels-list.yml'
 DEFAULT_PROJECT_PANEL = 13  # Número do projeto "Gestão à Vista AID"
 DEFAULT_FIELD_NAME = 'Data Fim'
 
@@ -428,7 +429,7 @@ def get_project_item_status_and_date(project_item: Dict[str, Any], field_name: s
     
     return status, date_value
 
-def clear_date_field(token: str, project_id: str, item_id: str, field_id: str) -> bool:
+def clear_date_field(token: str, project_id: str, item_id: str, field_id: str) -> tuple[bool, str]:
     """Limpa o campo de data (define como null)"""
     mutation = """
     mutation($project: ID!, $item: ID!, $field: ID!) {
@@ -445,12 +446,16 @@ def clear_date_field(token: str, project_id: str, item_id: str, field_id: str) -
     
     try:
         _graphql(token, mutation, {"project": project_id, "item": item_id, "field": field_id})
-        return True
+        return True, ""
     except Exception as e:
-        print(f"      ❌ Erro ao limpar campo: {e}")
-        return False
+        error_msg = str(e)
+        if "archived and cannot be updated" in error_msg:
+            return False, "archived"
+        else:
+            print(f"      ❌ Erro ao limpar campo: {e}")
+            return False, "error"
 
-def set_date_field(token: str, project_id: str, item_id: str, field_id: str, date_value: str) -> bool:
+def set_date_field(token: str, project_id: str, item_id: str, field_id: str, date_value: str) -> tuple[bool, str]:
     """Define o campo de data com o valor especificado"""
     mutation = """
     mutation($project: ID!, $item: ID!, $field: ID!, $value: Date!) {
@@ -472,15 +477,19 @@ def set_date_field(token: str, project_id: str, item_id: str, field_id: str, dat
             "field": field_id, 
             "value": date_value
         })
-        return True
+        return True, ""
     except Exception as e:
-        print(f"      ❌ Erro ao definir campo: {e}")
-        return False
+        error_msg = str(e)
+        if "archived and cannot be updated" in error_msg:
+            return False, "archived"
+        else:
+            print(f"      ❌ Erro ao definir campo: {e}")
+            return False, "error"
 
 def process_issue_for_projects(token: str, issue: Dict[str, Any], target_projects: List[Dict[str, Any]], 
                               field_name: str = DEFAULT_FIELD_NAME) -> Dict[str, int]:
     """Processa um issue para todos os projetos alvo"""
-    changes = {"cleared": 0, "set": 0, "errors": 0}
+    changes = {"cleared": 0, "set": 0, "errors": 0, "archived_skipped": 0}
     
     issue_number = issue.get('number')
     issue_title = issue.get('title', '')
@@ -524,9 +533,13 @@ def process_issue_for_projects(token: str, issue: Dict[str, Any], target_project
             # Status != "Done": campo deve estar vazio
             if current_date:
                 print(f"      🗑️  Limpando campo '{field_name}' (status != Done)")
-                if clear_date_field(token, project_id, project_item['id'], field_id):
+                success, error_type = clear_date_field(token, project_id, project_item['id'], field_id)
+                if success:
                     changes["cleared"] += 1
                     print(f"      ✅ Campo '{field_name}' limpo com sucesso")
+                elif error_type == "archived":
+                    print(f"      ⏭️  Item arquivado no projeto - ignorando atualização")
+                    changes["archived_skipped"] += 1
                 else:
                     changes["errors"] += 1
             else:
@@ -537,9 +550,13 @@ def process_issue_for_projects(token: str, issue: Dict[str, Any], target_project
             if not current_date and issue_closed_at and issue_state == 'CLOSED':
                 date_value = _iso_date(issue_closed_at)
                 print(f"      📅 Definindo campo '{field_name}' para {date_value} (status = Done, issue fechado)")
-                if set_date_field(token, project_id, project_item['id'], field_id, date_value):
+                success, error_type = set_date_field(token, project_id, project_item['id'], field_id, date_value)
+                if success:
                     changes["set"] += 1
                     print(f"      ✅ Campo '{field_name}' definido para {date_value}")
+                elif error_type == "archived":
+                    print(f"      ⏭️  Item arquivado no projeto - ignorando atualização")
+                    changes["archived_skipped"] += 1
                 else:
                     changes["errors"] += 1
             elif current_date:
@@ -601,15 +618,14 @@ def main():
     # Carregar variáveis de ambiente
     load_dotenv()
     
-    # Obter token do GitHub
-    github_token = os.getenv('GITHUB_TOKEN')
-    
-    if not github_token:
-        print("❌ GITHUB_TOKEN não encontrado!")
-        print("💡 Certifique-se de que o arquivo .env contém: GITHUB_TOKEN=seu_token_aqui")
+    # Obter token do GitHub via App
+    try:
+        github_token = get_github_app_installation_token()
+    except Exception as e:
+        print(f"❌ Falha ao gerar token do GitHub App: {e}")
         return
 
-    print(f"🔑 Usando token: {github_token[:8]}...")
+    print(f"🔑 Usando token (App): {github_token[:8]}...")
     
     # Atualizar dados dos projetos primeiro
     if not update_projects_data():
@@ -646,7 +662,7 @@ def main():
             return
         
         # Carregar lista de projetos (usar projects-panels.yml que tem os campos completos)
-        projects_list = load_projects_from_yaml('docs/projects-panels.yml')
+        projects_list = load_projects_from_yaml('config/projects-panels.yml')
         if not projects_list:
             print("❌ Nenhum projeto encontrado na lista")
             return
@@ -690,7 +706,7 @@ def main():
         # Carregar projetos completos com campos e filtrar
         print(f"\n🔍 Carregando projetos completos e filtrando...")
         projects_with_field = load_projects_with_fields_from_yaml(
-            'docs/projects-panels.yml', target_project_numbers, args.field
+            'config/projects-panels.yml', target_project_numbers, args.field
         )
         
         if not projects_with_field:
@@ -700,7 +716,7 @@ def main():
         print(f"✅ {len(projects_with_field)} projetos serão processados")
         
         # Processar cada repositório
-        total_changes = {"cleared": 0, "set": 0, "errors": 0}
+        total_changes = {"cleared": 0, "set": 0, "errors": 0, "archived_skipped": 0}
         
         for i, repo in enumerate(repos, 1):
             if repo.get('archived', False):
@@ -740,6 +756,7 @@ def main():
         print(f"📊 Total de projetos processados: {len(projects_with_field)}")
         print(f"✅ Campos limpos: {total_changes['cleared']}")
         print(f"📅 Campos preenchidos: {total_changes['set']}")
+        print(f"⏭️  Itens arquivados ignorados: {total_changes['archived_skipped']}")
         print(f"❌ Erros encontrados: {total_changes['errors']}")
         
         if total_changes["errors"] == 0:
