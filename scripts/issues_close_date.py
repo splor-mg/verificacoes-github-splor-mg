@@ -18,6 +18,9 @@ Environment variables used:
 Usage:
   python scripts/issues_close_date.py                                    # Usa projeto do .env ou padrão hardcoded
   python scripts/issues_close_date.py --panel                            # Seleção interativa de projetos
+  python scripts/issues_close_date.py --force-refresh                    # Force refresh cache
+  python scripts/issues_close_date.py --cache-dir "custom-cache"         # Custom cache directory
+  python scripts/issues_close_date.py --skip-cache                       # Skip cache completely
   python scripts/issues_close_date.py --projects "1,2,3"                 # Projetos específicos via argumento
   python scripts/issues_close_date.py --org "minha-org" --verbose        # Organização diferente
 
@@ -41,7 +44,9 @@ from typing import Any, Dict, List, Optional
 
 import requests
 import yaml
+from dotenv import load_dotenv
 from scripts.github_app_auth import get_github_app_installation_token
+from cache_manager import CacheManager, IssueProcessingState, log_cache_stats
 
 # Configurações padrão
 DEFAULT_ORG = 'splor-mg'
@@ -339,8 +344,24 @@ def get_project_field_id(project: Dict[str, Any], field_name: str = DEFAULT_FIEL
             return field['id']
     return None
 
-def get_issues_from_repo(token: str, org: str, repo_name: str, since_iso: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Obtém issues de um repositório, opcionalmente filtrando por updatedAt >= since_iso."""
+def get_issues_from_repo(token: str, org: str, repo_name: str, since_iso: Optional[str] = None,
+                        cache_manager: Optional[CacheManager] = None,
+                        force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """Obtém issues de um repositório com cache inteligente."""
+    if cache_manager is None:
+        cache_manager = CacheManager()
+    
+    # Chave do cache baseada em parâmetros
+    cache_key = f"{org}_{repo_name}_{since_iso or 'all'}"
+    
+    # Tentar recuperar do cache
+    if not force_refresh:
+        cached_issues = cache_manager.get('issues', cache_key)
+        if cached_issues:
+            print(f"📦 Usando issues em cache para {repo_name}")
+            return cached_issues.get('issues', [])
+    
+    print(f"🔄 Buscando issues do repositório {repo_name}...")
     # Quando since_iso é informado, aplicamos filterBy.since e ordenamos por UPDATED_AT DESC
     query = """
     query($owner: String!, $repo: String!, $cursor: String, $since: DateTime) {
@@ -418,6 +439,17 @@ def get_issues_from_repo(token: str, org: str, repo_name: str, since_iso: Option
             break
             
         cursor = page_info.get("endCursor")
+    
+    # Armazenar no cache
+    cache_data = {
+        'issues': all_issues,
+        'cached_at': dt.datetime.now().isoformat(),
+        'repo': repo_name,
+        'org': org,
+        'since': since_iso,
+        'count': len(all_issues)
+    }
+    cache_manager.set('issues', cache_data, cache_key)
     
     return all_issues
 
@@ -619,6 +651,16 @@ Ordem de prioridade para projeto padrão:
     parser.add_argument('--all-issues', action='store_true',
                        help='Processa todos os issues (equivalente a --days 0)')
     
+    # Argumentos de cache
+    parser.add_argument('--force-refresh', action='store_true',
+                       help='Force refresh all caches')
+    parser.add_argument('--cache-dir', default='logs/cache',
+                       help='Cache directory')
+    parser.add_argument('--skip-cache', action='store_true',
+                       help='Skip cache completely')
+    parser.add_argument('--cache-stats', action='store_true',
+                       help='Show cache statistics')
+    
     parser.add_argument('--verbose', '-v', 
                        action='store_true',
                        help='Modo verboso com mais detalhes')
@@ -628,6 +670,15 @@ Ordem de prioridade para projeto padrão:
 def main():
     """Função principal"""
     args = parse_arguments()
+    
+    # Inicializar cache manager
+    cache_manager = CacheManager(cache_dir=args.cache_dir)
+    issue_state = IssueProcessingState(cache_manager)
+    
+    # Mostrar estatísticas de cache se solicitado
+    if args.cache_stats:
+        log_cache_stats(cache_manager)
+        return
     
     # Carregar variáveis de ambiente
     load_dotenv()
@@ -756,11 +807,24 @@ def main():
             
             try:
                 # Obter issues do repositório com filtro opcional por data
-                issues = get_issues_from_repo(github_token, org, repo['name'], since_iso)
+                issues = get_issues_from_repo(github_token, org, repo['name'], since_iso, 
+                                            cache_manager, args.force_refresh)
                 print(f"  📋 {len(issues)} issues encontrados")
                 
-                # Processar cada issue
+                # Processar apenas issues que mudaram (se cache não estiver desabilitado)
+                processed_count = 0
+                skipped_count = 0
+                
                 for issue in issues:
+                    issue_id = issue['id']
+                    
+                    # Verificar se issue mudou (se cache não estiver desabilitado)
+                    if not args.skip_cache and not issue_state.has_issue_changed(
+                        repo['name'], issue_id, issue
+                    ):
+                        skipped_count += 1
+                        continue
+                    
                     changes = process_issue_for_projects(
                         github_token, issue, projects_with_field, args.field
                     )
@@ -768,6 +832,12 @@ def main():
                     # Acumular mudanças
                     for key in total_changes:
                         total_changes[key] += changes[key]
+                    
+                    # Marcar como processado
+                    issue_state.mark_issue_processed(repo['name'], issue_id, issue)
+                    processed_count += 1
+                
+                print(f"  📊 {processed_count} issues processados, {skipped_count} pulados (cache)")
                 
                 # Pausa entre repositórios para não sobrecarregar a API
                 if i < len(repos):

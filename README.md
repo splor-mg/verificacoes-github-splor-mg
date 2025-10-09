@@ -83,11 +83,11 @@ cp .env.example .env
 
 2. **Configuração de autenticação**
 
-A autenticação é feita via **GitHub App** (nome: `verificacoes-github-splor-mg`). O sistema gera um JWT assinado com a chave privada do App e o troca por um token de instalação temporário, eliminando a necessidade de PATs. Para GitHub Actions, configure os seguintes secrets:
+A autenticação é feita via **GitHub App** (nome: `verificacoes-github-splor-mg`). O sistema gera um JWT assinado com a chave privada do App e o troca por um token de instalação temporário, eliminando a necessidade de PATs. Para GitHub Actions, **configure os seguintes secrets**:
 
-- `GITHUB_APP_ID`: ID numérico do GitHub App
-- `GITHUB_APP_INSTALLATION_ID`: ID da instalação do App na organização  
-- `GITHUB_APP_PRIVATE_KEY`: Chave privada do App (formato PEM)
+- `GH_APP_ID`: ID numérico do GitHub App
+- `GH_APP_INSTALLATION_ID`: ID da instalação do App na organização  
+- `GH_APP_PRIVATE_KEY`: Chave privada do App (formato PEM)
 
 
 ## Instalação

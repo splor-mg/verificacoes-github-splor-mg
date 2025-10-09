@@ -1,6 +1,8 @@
 name: issue-closed-sync
 
 on:
+  schedule:
+    - cron: '47 23 * * 1-5'  # Segunda à sexta às 23:47
   issues:
     types: [closed]
   workflow_dispatch:
@@ -52,8 +54,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.GITHUB_APP_ID }}
-          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           owner: ${{ inputs.organization }}
 
       - name: Checkout
@@ -97,6 +99,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: ${{ inputs.organization }}
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
       - name: Update workflow options dynamically
         if: inputs.update_project_list == 'sim'
@@ -106,6 +111,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: ${{ inputs.organization }}
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
       - name: Commit and push project updates
         if: inputs.update_project_list == 'sim'
@@ -151,6 +159,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: ${{ inputs.organization }}
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
       - name: Commit and push changes
         if: inputs.update_project_list == 'não'

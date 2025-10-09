@@ -3,7 +3,9 @@ import csv
 import os
 import yaml
 from datetime import datetime
+from typing import Optional, List, Dict, Any
 from scripts.github_app_auth import get_github_app_installation_token
+from cache_manager import CacheManager
 
 
 
@@ -42,10 +44,22 @@ def load_labels_from_yaml(labels_file):
         print(f"❌ Erro ao carregar arquivo YAML: {e}")
         return None
 
-def get_github_repos(organization, token=None):
+def get_github_repos(organization, token=None, cache_manager: Optional[CacheManager] = None, 
+                    force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
-    Obtém todos os repositórios de uma organização do GitHub
+    Obtém todos os repositórios de uma organização do GitHub com cache inteligente
     """
+    if cache_manager is None:
+        cache_manager = CacheManager()
+    
+    # Tentar recuperar do cache
+    if not force_refresh:
+        cached_repos = cache_manager.get('repositories', organization)
+        if cached_repos:
+            print(f"📦 Usando repositórios em cache para {organization}")
+            return cached_repos.get('repositories', [])
+    
+    print(f"🔄 Buscando repositórios da organização {organization}...")
     repos = []
     page = 1
     per_page = 100  # Máximo por página
@@ -95,6 +109,16 @@ def get_github_repos(organization, token=None):
             break
     
     print(f"📊 Total de repositórios coletados: {len(repos)}")
+    
+    # Armazenar no cache
+    cache_data = {
+        'repositories': repos,
+        'cached_at': datetime.now().isoformat(),
+        'org': organization,
+        'count': len(repos)
+    }
+    cache_manager.set('repositories', cache_data, organization)
+    
     return repos
 
 def export_to_csv(repos, filename):

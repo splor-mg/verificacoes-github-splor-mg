@@ -1,8 +1,8 @@
 name: labels-sync
 
 on:
-  #schedule:
-  #  - cron: '0 11,19 * * *'  # At 11:00 and 19:00 UTC every day
+  schedule:
+    - cron: '57 17 * * 5'  # Toda sexta-feira às 17:57
   workflow_dispatch:
     inputs:
       organization:
@@ -32,8 +32,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.GITHUB_APP_ID }}
-          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           owner: ${{ inputs.organization }}
 
       - name: Checkout current repository
@@ -87,6 +87,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: ${{ inputs.organization }}
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
       - name: Sync Labels for all repositories
         run: |
@@ -105,6 +108,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: ${{ inputs.organization }}
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
       - name: Commit and push changes
         run: |

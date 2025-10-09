@@ -8,6 +8,9 @@ import argparse
 import logging
 from pathlib import Path
 from typing import Optional, List
+
+# Adiciona o diretório scripts ao path para permitir importações diretas
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
 from scripts.repos_list import sync_organization_labels, get_github_repos, export_to_csv
 from scripts.github_app_auth import get_github_app_installation_token
 from scripts.labels_sync import sync_labels_for_repo
@@ -72,7 +75,8 @@ def validate_config(config: dict) -> bool:
     return True
 
 
-def run_projects_panels(org: str, verbose: bool = False, output: str = None, list_output: str = None) -> bool:
+def run_projects_panels(org: str, verbose: bool = False, output: str = None, list_output: str = None,
+                       force_refresh: bool = False, cache_dir: str = 'logs/cache') -> bool:
     """Executa o script projects_panels.py"""
     try:
         print(f"\n📊 Atualizando dados dos projetos da organização: {org}")
@@ -82,13 +86,15 @@ def run_projects_panels(org: str, verbose: bool = False, output: str = None, lis
         original_argv = sys.argv.copy()
         
         # Configurar argumentos para projects_panels.py
-        sys.argv = ['projects_panels.py', '--org', org]
+        sys.argv = ['projects_panels.py', '--org', org, '--cache-dir', cache_dir]
         if output:
             sys.argv.extend(['--output', output])
         if list_output:
             sys.argv.extend(['--list-output', list_output])
         if verbose:
             sys.argv.append('--verbose')
+        if force_refresh:
+            sys.argv.append('--force-refresh')
         
         # Executar o script
         projects_panels_main()
@@ -108,7 +114,9 @@ def run_projects_panels(org: str, verbose: bool = False, output: str = None, lis
 def run_issues_close_date(org: str, panel: bool = False, projects: str = None, 
                          field: str = 'Data Fim', verbose: bool = False, 
                          repos_file: str = None, projects_list: str = None,
-                         days: int = 7, all_issues: bool = False) -> bool:
+                         days: int = 7, all_issues: bool = False,
+                         force_refresh: bool = False, cache_dir: str = 'logs/cache',
+                         skip_cache: bool = False) -> bool:
     """Executa o script issues_close_date.py"""
     try:
         print(f"\n🔧 Gerenciando campo '{field}' em projetos da organização: {org}")
@@ -118,7 +126,7 @@ def run_issues_close_date(org: str, panel: bool = False, projects: str = None,
         original_argv = sys.argv.copy()
         
         # Configurar argumentos para issues_close_date.py
-        sys.argv = ['issues_close_date.py', '--org', org, '--field', field]
+        sys.argv = ['issues_close_date.py', '--org', org, '--field', field, '--cache-dir', cache_dir]
         
         if panel:
             sys.argv.append('--panel')
@@ -138,6 +146,10 @@ def run_issues_close_date(org: str, panel: bool = False, projects: str = None,
 
         if verbose:
             sys.argv.append('--verbose')
+        if force_refresh:
+            sys.argv.append('--force-refresh')
+        if skip_cache:
+            sys.argv.append('--skip-cache')
         
         # Executar o script
         issues_close_date_main()
@@ -232,7 +244,24 @@ Exemplos de uso:
     parser.add_argument('--issues-all', action='store_true',
                        help='Processa todos os issues (equivalente a --issues-days 0)')
     
+    # Argumentos de cache
+    parser.add_argument('--force-refresh', action='store_true',
+                       help='Force refresh all caches')
+    parser.add_argument('--cache-dir', default='logs/cache',
+                       help='Cache directory')
+    parser.add_argument('--skip-cache', action='store_true',
+                       help='Skip cache completely')
+    parser.add_argument('--cache-stats', action='store_true',
+                       help='Show cache statistics')
+    
     args = parser.parse_args()
+    
+    # Mostrar estatísticas de cache se solicitado
+    if args.cache_stats:
+        from scripts.cache_manager import CacheManager, log_cache_stats
+        cache_manager = CacheManager(cache_dir=args.cache_dir)
+        log_cache_stats(cache_manager)
+        return
     
     # Se nenhum argumento foi fornecido, mostra ajuda
     if not any([
@@ -274,7 +303,10 @@ Exemplos de uso:
         if args.all or args.repos_list:
             try:
                 print(f"\n📊 Listando repositórios da organização: {config['github_org']}")
-                repos = get_github_repos(config['github_org'], config['github_token'])
+                from scripts.cache_manager import CacheManager
+                cache_manager = CacheManager(cache_dir=args.cache_dir)
+                repos = get_github_repos(config['github_org'], config['github_token'], 
+                                       cache_manager, args.force_refresh)
                 
                 if repos:
                     # Cria diretório config se não existir
@@ -327,7 +359,10 @@ Exemplos de uso:
                         return
                     print(f"🎯 Sincronizando {len(repos)} repositórios específicos")
                 else:
-                    repos = get_github_repos(config['github_org'], config['github_token'])
+                    from scripts.cache_manager import CacheManager
+                    cache_manager = CacheManager(cache_dir=args.cache_dir)
+                    repos = get_github_repos(config['github_org'], config['github_token'], 
+                                           cache_manager, args.force_refresh)
                 
                 if not repos:
                     print("❌ Nenhum repositório encontrado para sincronizar")
@@ -447,7 +482,9 @@ Exemplos de uso:
                     config['github_org'],
                     args.verbose,
                     (getattr(args, 'projects_output', None) if generate_info else None),
-                    (getattr(args, 'projects_panels_list_output', None) if generate_list else None)
+                    (getattr(args, 'projects_panels_list_output', None) if generate_list else None),
+                    args.force_refresh,
+                    args.cache_dir
                 ):
                     success = False
             except Exception as e:
@@ -469,7 +506,10 @@ Exemplos de uso:
                     repos_file=args.issues_repos_file,
                     projects_list=args.issues_projects_list,
                     days=args.issues_days,
-                    all_issues=args.issues_all
+                    all_issues=args.issues_all,
+                    force_refresh=args.force_refresh,
+                    cache_dir=args.cache_dir,
+                    skip_cache=args.skip_cache
                 ):
                     success = False
             except Exception as e:

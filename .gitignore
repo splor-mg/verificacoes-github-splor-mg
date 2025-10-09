@@ -58,7 +58,6 @@ celerybeat-schedule
 
 # Environments
 .env
-.env.*
 
 # Spyder project settings
 .spyderproject
@@ -84,6 +83,9 @@ celerybeat-schedule
 logs/*.log
 *.log
 !logs/README.md
+
+# Cache (moved to logs/cache/)
+logs/cache/
 
 # Other
 *.tmp

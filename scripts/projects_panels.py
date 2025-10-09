@@ -14,6 +14,8 @@ Usage:
   python scripts/projects_panels.py
   python scripts/projects_panels.py --org "organization-name"
   python scripts/projects_panels.py --output "custom-output.yml"
+  python scripts/projects_panels.py --force-refresh  # Force refresh cache
+  python scripts/projects_panels.py --cache-dir "custom-cache"  # Custom cache directory
 
 Priorização de configuração:
 1. Argumento --org (maior prioridade)
@@ -29,8 +31,12 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 import requests
 import yaml
+from dotenv import load_dotenv
+
+from .cache_manager import CacheManager, log_cache_stats
 from scripts.github_app_auth import get_github_app_installation_token
 
 # Configurações padrão
@@ -85,8 +91,21 @@ def _graphql(token: str, query: str, variables: Dict[str, Any]) -> Dict[str, Any
     return data["data"]
 
 
-def get_organization_projects(token: str, org: str) -> List[Dict[str, Any]]:
-    """Get all projects from an organization."""
+def get_organization_projects(token: str, org: str, 
+                            cache_manager: Optional[CacheManager] = None,
+                            force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """Get all projects from an organization with intelligent caching."""
+    if cache_manager is None:
+        cache_manager = CacheManager()
+    
+    # Tentar recuperar do cache
+    if not force_refresh:
+        cached_projects = cache_manager.get('projects', org)
+        if cached_projects:
+            print(f"📦 Usando projetos em cache para {org}")
+            return cached_projects.get('projects', [])
+    
+    print(f"🔄 Buscando projetos da organização {org}...")
     query = """
     query($org: String!, $cursor: String) {
       organization(login: $org) {
@@ -154,6 +173,15 @@ def get_organization_projects(token: str, org: str) -> List[Dict[str, Any]]:
             break
             
         cursor = page_info["endCursor"]
+    
+    # Armazenar no cache
+    cache_data = {
+        'projects': all_projects,
+        'cached_at': datetime.now().isoformat(),
+        'org': org,
+        'count': len(all_projects)
+    }
+    cache_manager.set('projects', cache_data, org)
     
     return all_projects
 
@@ -287,12 +315,35 @@ Exemplos de uso:
         action="store_true",
         help="Modo verboso com mais detalhes"
     )
+    parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Force refresh all caches"
+    )
+    parser.add_argument(
+        "--cache-dir",
+        default="logs/cache",
+        help="Cache directory"
+    )
+    parser.add_argument(
+        "--cache-stats",
+        action="store_true",
+        help="Show cache statistics"
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     """Main function."""
     args = parse_args()
+    
+    # Inicializar cache manager
+    cache_manager = CacheManager(cache_dir=args.cache_dir)
+    
+    # Mostrar estatísticas de cache se solicitado
+    if args.cache_stats:
+        log_cache_stats(cache_manager)
+        return
     
     # Carregar variáveis de ambiente
     load_dotenv()
@@ -353,7 +404,7 @@ def main() -> None:
     try:
         # Get all projects from organization
         print(f"📊 Buscando projetos da organização '{org}'...")
-        projects = get_organization_projects(token, org)
+        projects = get_organization_projects(token, org, cache_manager, args.force_refresh)
         
         if not projects:
             print(f"⚠️  Nenhum projeto encontrado na organização '{org}'")
