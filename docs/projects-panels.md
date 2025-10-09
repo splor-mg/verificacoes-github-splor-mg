@@ -17,12 +17,12 @@ O script `projects_panels.py` extrai informações completas dos projetos GitHub
 1. **Consulta API GraphQL** do GitHub
 2. **Extrai informações** de todos os projetos da organização
 3. **Gera dois arquivos YAML**:
-   - `config/projects-panels.yml` - Dados completos
+   - `config/projects-panels-info.yml` - Dados completos
    - `config/projects-panels-list.yml` - Lista simplificada
 
 ## Estrutura dos Dados
 
-### Arquivo Completo (`config/projects-panels.yml`)
+### Arquivo Completo (`config/projects-panels-info.yml`)
 ```yaml
 org: splor-mg
 projects:
@@ -126,13 +126,13 @@ poetry run python scripts/projects_panels.py --verbose
 ### Via main.py
 ```bash
 # Atualizar dados dos projetos
-poetry run python main.py --projects-panels
+poetry run python main.py --projects-panels-info
 
 # Atualizar lista de projetos
-poetry run python main.py --projects-list
+poetry run python main.py --projects-panels-list
 
 # Ambos
-poetry run python main.py --projects-panels --projects-list
+poetry run python main.py --projects-panels-info --projects-panels-list
 ```
 
 ## Configuração
@@ -164,13 +164,13 @@ GITHUB_APP_PRIVATE_KEY="-----BEGIN..." # Chave privada
 ```
 📊 Buscando projetos da organização 'splor-mg'...
 ✅ Encontrados 2 projetos
-✅ YAML salvo em: config/projects-panels.yml
+✅ YAML salvo em: config/projects-panels-info.yml
 ✅ YAML salvo em: config/projects-panels-list.yml
 
 📋 Resumo da extração:
    Organização: splor-mg
    Total de projetos: 2
-   Arquivo completo: config/projects-panels.yml
+   Arquivo completo: config/projects-panels-info.yml
    Arquivo de lista: config/projects-panels-list.yml
    Total de campos: 8
    - Gestão à Vista AID (#13): 4 campos
@@ -197,7 +197,7 @@ GITHUB_APP_PRIVATE_KEY="-----BEGIN..." # Chave privada
 ## Integração com Outros Scripts
 
 ### Issues Close Date
-- Usa `config/projects-panels.yml` para obter IDs dos projetos
+- Usa `config/projects-panels-info.yml` para obter IDs dos projetos
 - Filtra projetos por campos específicos (ex: "Data Fim")
 
 ### Workflows GitHub Actions

@@ -75,10 +75,10 @@ jobs:
           echo "🔍 Obtendo repositórios da organização: ${{ inputs.organization }}"
           
           # Usar main.py para listar repositórios e gerar CSV
-          poetry run python main.py --list-repos
+          poetry run python main.py --repos-list
           
           # Verificar se o CSV foi gerado
-          if [ -f "docs/repos_list.csv" ]; then
+          if [ -f "config/repos_list.csv" ]; then
             echo "✅ Lista de repositórios atualizada com sucesso"
           else
             echo "❌ Arquivo CSV não foi gerado"
@@ -110,7 +110,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add docs/
+          git add config/
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else

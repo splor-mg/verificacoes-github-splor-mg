@@ -8,22 +8,22 @@ Automatiza a gestão de organizações GitHub: inventaria repositórios, sincron
 ### 1. Listar Repositórios
 
 ```bash
-poetry run python main.py --list-repos
+poetry run python main.py --repos-list
 # ou
-poetry run task list-repos
+poetry run task repos-list
 ```
 
 Gera `config/repos_list.csv` com todos os repositórios da organização.
 
-### 2. Listar Painéis de Projetos
+### 2. Painéis de Projetos - Listagem e Informações
 
 ```bash
-poetry run python main.py --projects-panels
+poetry run python main.py --projects-panels-list
 # ou
-poetry run task projects-panels
+poetry run task projects-panels-list
 ```
 
-Extrai dados completos dos projetos GitHub (Projects v2) e gera `config/projects-panels.yml` e `config/projects-panels-list.yml`.
+Extrai dados completos dos projetos GitHub (Projects v2) e gera `config/projects-panels-info.yml` e `config/projects-panels-list.yml`.
 
 ### 3. Sincronizar Labels nos Repositórios
 
@@ -43,7 +43,7 @@ Por padrão, a sincronização é aditiva: garante que todos os repositórios te
 
 **⚠️ Alerta Importante sobre Labels**
 
-**ATENÇÃO**: Se eventualmente alguém atualizar manualmente o nome de uma label existente (por exemplo, alterar de "bug" para "bugs") sem alterar as default-labels em 'config/labels.yaml', se os scripts de sincronização de labels deste repositório rodarem, o nome da label  "bugs" retornará para "bug" e será **automaticamente removida de todos os issues** onde estava aplicada.
+**ATENÇÃO**: Se eventualmente alguém atualizar manualmente o nome de uma label existente (por exemplo, alterar de "bug" para "bugs") sem alterar as default-labels em 'config/labels.yaml e os scripts de sincronização de labels deste repositório rodarem com o parâmetro "--delete-extras", a label  "bugs" será **removida de todos os issues** onde estava aplicada, e uma nova label "bug" criarda.
 
 
 **Recomendação**: Se precisar alterar o nome de uma label, considere:
@@ -63,7 +63,7 @@ poetry run python main.py --issues-close-date
 poetry run task issues-close-date
 ```
 
-Gerencia automaticamente o campo "Data Fim" em issues baseado no status e data de fechamento.
+Gerencia automaticamente o campo "Data Fim" em issues baseado no status e data de fechamento dos isses dos últimos 7 dias. 
 
 ### 5. Executar Todas as Operações
 

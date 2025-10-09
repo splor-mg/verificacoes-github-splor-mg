@@ -29,17 +29,17 @@ poetry run python main.py --issues-close-date
 
 ### Seleção Interativa de Projetos
 ```bash
-poetry run python main.py --issues-panel
+poetry run python main.py --issues-close-date-panel
 ```
 
 ### Projetos Específicos
 ```bash
-poetry run python main.py --issues-close-date --issues-projects "1,2,3"
+poetry run python main.py --issues-close-date --issues-close-date-panels "1,2,3"
 ```
 
 ### Campo Customizado
 ```bash
-poetry run python main.py --issues-close-date --issues-field "Data Conclusão"
+poetry run python main.py --issues-close-date --issues-close-date-field "Data Conclusão"
 ```
 
 ## Configuração
@@ -47,7 +47,7 @@ poetry run python main.py --issues-close-date --issues-field "Data Conclusão"
 ### Arquivos Necessários
 
 - `config/repos_list.csv` - Lista de repositórios
-- `config/projects-panels.yml` - Dados completos dos projetos
+- `config/projects-panels-info.yml` - Dados completos dos projetos
 - `config/projects-panels-list.yml` - Lista de projetos
 
 ### Variáveis de Ambiente
@@ -70,7 +70,7 @@ Usa GitHub App para autenticação:
 2. **Carrega projetos** do arquivo YAML
 3. **Filtra projetos** com o campo especificado
 4. **Para cada repositório**:
-   - Busca issues via GraphQL
+   - Busca issues via GraphQL (com filtro por `updatedAt` quando o filtro por data está ativo)
    - Para cada issue:
      - Verifica status no projeto
      - Aplica regras de negócio
@@ -90,7 +90,7 @@ poetry run python main.py --issues-close-date --issues-days 30
 
 ### Workflow Completo
 ```bash
-poetry run python main.py --all --projects-panels --issues-close-date
+poetry run python main.py --all --issues-days 30
 ```
 
 ## Troubleshooting
@@ -100,7 +100,7 @@ poetry run python main.py --all --projects-panels --issues-close-date
 - Confirme o nome exato do campo
 
 ### Erro: "Projeto não encontrado"
-- Execute `--projects-panels` para atualizar dados
+- Execute `--projects-panels-info` para atualizar dados
 - Verifique se o projeto existe na organização
 
 ### Issues não processados
@@ -121,3 +121,9 @@ O sistema inclui workflows para automação:
 2. Selecione "issue-closed-sync"
 3. Clique em "Run workflow"
 4. Configure parâmetros e execute
+
+## Filtro por Data
+
+- `--issues-days N` (padrão 7): processa issues com `updatedAt >= now_utc - N dias`, isto é, nos últimos N dias.
+- `--issues-all` ou `--issues-days 0`: processa todos os issues (filtro desativado).
+- Observação: o campo do projeto continuará sendo preenchido com `closedAt` (quando aplicável), o filtro usa `updatedAt` apenas para reduzir o escopo de busca.

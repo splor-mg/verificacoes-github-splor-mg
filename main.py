@@ -107,7 +107,8 @@ def run_projects_panels(org: str, verbose: bool = False, output: str = None, lis
 
 def run_issues_close_date(org: str, panel: bool = False, projects: str = None, 
                          field: str = 'Data Fim', verbose: bool = False, 
-                         repos_file: str = None, projects_list: str = None) -> bool:
+                         repos_file: str = None, projects_list: str = None,
+                         days: int = 7, all_issues: bool = False) -> bool:
     """Executa o script issues_close_date.py"""
     try:
         print(f"\n🔧 Gerenciando campo '{field}' em projetos da organização: {org}")
@@ -127,8 +128,14 @@ def run_issues_close_date(org: str, panel: bool = False, projects: str = None,
         if repos_file:
             sys.argv.extend(['--repos-file', repos_file])
         if projects_list:
-            sys.argv.extend(['--projects-list', projects_list])
+            sys.argv.extend(['--projects-panels-list', projects_list])
         
+        # Filtro por data
+        if all_issues:
+            sys.argv.append('--all-issues')
+        else:
+            sys.argv.extend(['--days', str(days)])
+
         if verbose:
             sys.argv.append('--verbose')
         
@@ -155,7 +162,7 @@ def main():
         epilog="""
 Exemplos de uso:
   # Labels e repositórios
-  python main.py --list-repos                  # Lista repositórios
+  python main.py --repos-list                  # Lista repositórios
   python main.py --sync-labels           # Sincroniza labels nos repositórios
   python main.py --all                         # Executa todas as operações
   python main.py --verbose                     # Modo verboso
@@ -164,23 +171,24 @@ Exemplos de uso:
   python main.py --labels /caminho/labels.yaml  # Usa arquivo de labels customizado
   
   # Projetos GitHub
-  python main.py --projects-panels             # Atualiza dados dos projetos (projects-panels.yml)
-  python main.py --projects-list               # Atualiza lista de projetos (projects-panels-list.yml)
+  python main.py --projects-panels-info        # Atualiza dados completos dos projetos (projects-panels-info.yml)
+  python main.py --projects-panels-list        # Atualiza lista de projetos (projects-panels-list.yml)
+  python main.py --projects-panels-update      # Atualiza ambos: info e lista
   python main.py --projects-output "meus_projetos.yml"  # Arquivo de saída customizado
-  python main.py --projects-list-output "lista.yml"     # Arquivo de lista customizado
+  python main.py --projects-panels-list-output "lista.yml"     # Arquivo de lista customizado
   
   # Issues e campos de data
   python main.py --issues-close-date           # Gerencia campo Data Fim em projetos
-  python main.py --issues-panel                # Seleção interativa de projetos para issues
-  python main.py --issues-projects "1,2,3"     # Projetos específicos para issues
-  python main.py --issues-field "Data Conclusão"  # Campo customizado para issues
+  python main.py --issues-close-date-panel                # Seleção interativa de projetos para issues
+  python main.py --issues-close-date-panels "1,2,3"     # Projetos específicos para issues
+  python main.py --issues-close-date-field "Data Conclusão"  # Campo customizado para issues
   python main.py --issues-repos-file "repos.csv"  # Arquivo de repositórios customizado
   python main.py --issues-projects-list "projetos.yml"  # Arquivo de projetos customizado
         """
     )
     
     # Argumentos
-    parser.add_argument('--list-repos', action='store_true',
+    parser.add_argument('--repos-list', action='store_true',
                        help='Lista repositórios da organização')
     parser.add_argument('--sync-labels', action='store_true',
                        help='Sincroniza labels em todos os repositórios')
@@ -195,34 +203,48 @@ Exemplos de uso:
     parser.add_argument('--labels', type=str, help='Arquivo de labels customizado')
     
     # Argumentos para projetos
-    parser.add_argument('--projects-panels', action='store_true', 
-                       help='Atualiza dados dos projetos GitHub (projects-panels.yml)')
-    parser.add_argument('--projects-list', action='store_true',
+    parser.add_argument('--projects-panels-info', action='store_true', 
+                       help='Atualiza dados completos dos projetos GitHub (projects-panels-info.yml)')
+    parser.add_argument('--projects-panels-list', action='store_true',
                        help='Atualiza lista de projetos (projects-panels-list.yml)')
-    parser.add_argument('--projects-output', type=str,
-                       help='Arquivo de saída para dados completos dos projetos (padrão: config/projects-panels.yml)')
-    parser.add_argument('--projects-list-output', type=str,
+    parser.add_argument('--projects-panels-update', action='store_true',
+                       help='Atualiza ambos: dados completos e lista de projetos')
+    parser.add_argument('--projects-panels-output', type=str,
+                       help='Arquivo de saída para dados completos dos projetos (padrão: config/projects-panels-info.yml)')
+    parser.add_argument('--projects-panels-list-output', type=str,
                        help='Arquivo de saída para lista de projetos (padrão: config/projects-panels-list.yml)')
     
     # Argumentos para issues
     parser.add_argument('--issues-close-date', action='store_true',
                        help='Gerencia campo Data Fim em projetos GitHub')
-    parser.add_argument('--issues-panel', action='store_true',
+    parser.add_argument('--issues-close-date-panel', action='store_true',
                        help='Seleção interativa de projetos para issues')
-    parser.add_argument('--issues-projects', type=str,
+    parser.add_argument('--issues-close-date-panels', type=str,
                        help='Projetos específicos para issues (números separados por vírgula)')
-    parser.add_argument('--issues-field', type=str, default='Data Fim',
+    parser.add_argument('--issues-close-date-field', type=str, default='Data Fim',
                        help='Nome do campo de data para issues (padrão: Data Fim)')
     parser.add_argument('--issues-repos-file', type=str,
                        help='Arquivo CSV com lista de repositórios para issues (padrão: config/repos_list.csv)')
     parser.add_argument('--issues-projects-list', type=str,
                        help='Arquivo YAML com lista de projetos para issues (padrão: config/projects-panels-list.yml)')
+    parser.add_argument('--issues-days', type=int, default=7,
+                       help='Processar apenas issues atualizados nos últimos N dias (padrão: 7). Use 0 para desabilitar o filtro')
+    parser.add_argument('--issues-all', action='store_true',
+                       help='Processa todos os issues (equivalente a --issues-days 0)')
     
     args = parser.parse_args()
     
     # Se nenhum argumento foi fornecido, mostra ajuda
-    if not any([args.list_repos, args.sync_labels, args.all, 
-                args.projects_panels, args.projects_list, args.issues_close_date, args.issues_panel]):
+    if not any([
+        args.repos_list,
+        args.sync_labels,
+        args.all,
+        args.projects_panels_info,
+        args.projects_panels_list,
+        args.projects_panels_update,
+        args.issues_close_date,
+        args.issues_close_date_panel,
+    ]):
         parser.print_help()
         return
     
@@ -249,7 +271,7 @@ Exemplos de uso:
     
     try:
         
-        if args.all or args.list_repos:
+        if args.all or args.repos_list:
             try:
                 print(f"\n📊 Listando repositórios da organização: {config['github_org']}")
                 repos = get_github_repos(config['github_org'], config['github_token'])
@@ -311,38 +333,122 @@ Exemplos de uso:
                     print("❌ Nenhum repositório encontrado para sincronizar")
                     success = False
                 else:
-                    # Sincroniza labels em cada repositório
+                    # Sumário de coleta
+                    print("")
+                    print(f"📊 Total de repositórios coletados: {len(repos)}")
+                    print("")
+
+                    # Sincroniza labels em cada repositório com cabeçalho padronizado
                     success_count = 0
-                    for repo in repos:
+                    total_deleted = 0
+                    total_errors = 0
+                    total_processed = 0
+                    total_created = 0
+                    total_updated_name = 0
+                    total_adjusted_color = 0
+                    total_adjusted_description = 0
+                    total_unchanged = 0
+                    for idx, repo in enumerate(repos, start=1):
                         if repo.get('archived', False):
                             print(f"⏭️  Pulando repositório arquivado: {repo['name']}")
                             continue
-                            
+
+                        print(f"📁 Repositório {idx}/{len(repos)}: {repo['name']}")
                         try:
-                            print(f"🔄 Sincronizando {repo['name']}...")
-                            sync_labels_for_repo(
+                            result = sync_labels_for_repo(
                                 repo['name'],
                                 labels,
                                 config['github_token'],
                                 config['github_org'],
                                 delete_extras=args.delete_extras
                             )
+                            # Unpack results (retrocompat: 3 or 4-tuple)
+                            if isinstance(result, tuple) and len(result) == 4:
+                                success_repo, deleted_repo, errors_repo, details = result
+                            else:
+                                success_repo, deleted_repo, errors_repo = result
+                                details = {
+                                    'processed': success_repo + errors_repo,
+                                    'created': 0,
+                                    'updated_name': 0,
+                                    'adjusted_color': 0,
+                                    'adjusted_description': 0,
+                                    'deleted': deleted_repo,
+                                    'unchanged': 0,
+                                    'errors': errors_repo,
+                                }
+
                             success_count += 1
+                            total_deleted += deleted_repo
+                            total_errors += errors_repo
+                            total_processed += details.get('processed', 0)
+                            total_created += details.get('created', 0)
+                            total_updated_name += details.get('updated_name', 0)
+                            total_adjusted_color += details.get('adjusted_color', 0)
+                            total_adjusted_description += details.get('adjusted_description', 0)
+                            total_unchanged += details.get('unchanged', 0)
                         except Exception as e:
                             print(f"❌ Erro ao sincronizar {repo['name']}: {e}")
                             logging.error(f"Erro ao sincronizar {repo['name']}: {e}")
+                        # Linha em branco entre repositórios para legibilidade
+                        if idx < len(repos):
+                            print("")
                     
+                    # Linha em branco antes do relatório final
+                    print("")
                     print(f"✅ Sincronização concluída! {success_count}/{len(repos)} repositórios processados")
+                    print("")
+                    print("============================================================")
+                    print("📋 RELATÓRIO FINAL")
+                    print("- Repositórios")
+                    print(f"  - Total: {len(repos)}")
+                    archived_count = sum(1 for r in repos if r.get('archived', False))
+                    print(f"  - Processados: {success_count}")
+                    print(f"  - Arquivados (ignorados): {archived_count}")
+                    print(f"  - Com erro: {total_errors}")
+                    print("")
+                    print("- Labels (agregadas)")
+                    print(f"  - Processadas: {total_processed}")
+                    print(f"  - Criadas: {total_created}")
+                    print(f"  - Atualizadas (nome): {total_updated_name}")
+                    print(f"  - Ajustes de cor: {total_adjusted_color}")
+                    print(f"  - Ajustes de descrição: {total_adjusted_description}")
+                    print(f"  - Deletadas (extras): {total_deleted}")
+                    print(f"  - Inalteradas: {total_unchanged}")
+                    print(f"  - Erros: {total_errors}")
+                    print("")
+                    print("- Observações")
+                    print(f"  - Modo: {'Modo completo (labels extras removidas)' if args.delete_extras else 'Modo conservador (labels extras preservadas)'}")
+                    print(f"  - Template: {config['labels_file']}")
+                    print("============================================================")
             except Exception as e:
                 print(f"❌ Erro na sincronização dos repositórios: {e}")
                 logging.error(f"Erro na sincronização dos repositórios: {e}")
                 success = False
         
         # Executar comandos de projetos
-        if args.all or args.projects_panels or args.projects_list:
+        if args.all or args.projects_panels_info or args.projects_panels_list or args.projects_panels_update:
             try:
-                if not run_projects_panels(config['github_org'], args.verbose, 
-                                         args.projects_output, args.projects_list_output):
+                # Determinar quais saídas gerar
+                generate_info = args.projects_panels_info or args.projects_panels_update or args.all
+                generate_list = args.projects_panels_list or args.projects_panels_update or args.all
+                # Passar flags específicas para forçar modo apenas info/lista
+                # Implementado via sys.argv dentro do script projects_panels.py
+                # Usamos convenção: quando só um estiver ativo, passamos only-<tipo>
+                if generate_info and not generate_list:
+                    # Apenas info
+                    os.environ["PROJECTS_ONLY_MODE"] = "info"
+                elif generate_list and not generate_info:
+                    os.environ["PROJECTS_ONLY_MODE"] = "list"
+                else:
+                    os.environ.pop("PROJECTS_ONLY_MODE", None)
+
+                if not run_projects_panels(
+                    config['github_org'],
+                    args.verbose,
+                    (getattr(args, 'projects_output', None) if generate_info else None),
+                    (getattr(args, 'projects_panels_list_output', None) if generate_list else None)
+                ):
                     success = False
             except Exception as e:
                 print(f"❌ Erro ao executar projects_panels: {e}")
@@ -350,18 +456,20 @@ Exemplos de uso:
                 success = False
         
         # Executar comandos de issues
-        if args.all or args.issues_close_date or args.issues_panel:
+        if args.all or args.issues_close_date or args.issues_close_date_panel:
             try:
                 # Só usar modo interativo se explicitamente solicitado
-                panel_mode = args.issues_panel
+                panel_mode = args.issues_close_date_panel
                 if not run_issues_close_date(
                     config['github_org'], 
                     panel=panel_mode,
-                    projects=args.issues_projects,
-                    field=args.issues_field,
+                    projects=args.issues_close_date_panels,
+                    field=args.issues_close_date_field,
                     verbose=args.verbose,
                     repos_file=args.issues_repos_file,
-                    projects_list=args.issues_projects_list
+                    projects_list=args.issues_projects_list,
+                    days=args.issues_days,
+                    all_issues=args.issues_all
                 ):
                     success = False
             except Exception as e:

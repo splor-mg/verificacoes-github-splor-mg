@@ -109,7 +109,7 @@ jobs:
 
       - name: Update projects data
         run: |
-          poetry run python main.py --projects-panels --projects-list
+          poetry run python main.py --projects-panels-info --projects-panels-list
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: ${{ inputs.organization }}
@@ -117,8 +117,8 @@ jobs:
       - name: Manage issues
         run: |
           poetry run python main.py --issues-close-date \
-            --issues-projects "${{ inputs.project_number }}" \
-            --issues-field "${{ inputs.field_name }}" \
+            --issues-close-date-panels "${{ inputs.project_number }}" \
+            --issues-close-date-field "${{ inputs.field_name }}" \
             --org "${{ inputs.organization }}"
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -215,7 +215,7 @@ jobs:
 
       - name: Run full workflow
         run: |
-          poetry run python main.py --all --projects-panels --issues-close-date
+          poetry run python main.py --all --projects-panels-info --issues-close-date
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: 'splor-mg'

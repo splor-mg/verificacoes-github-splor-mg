@@ -38,12 +38,12 @@ dados-sigplan-planejamento,False
 
 ### Comando Básico
 ```bash
-poetry run python main.py --list-repos
+poetry run python main.py --repos-list
 ```
 
 ### Via Task
 ```bash
-poetry run task list-repos
+poetry run task repos-list
 ```
 
 ### Diretamente

@@ -339,18 +339,26 @@ def get_project_field_id(project: Dict[str, Any], field_name: str = DEFAULT_FIEL
             return field['id']
     return None
 
-def get_issues_from_repo(token: str, org: str, repo_name: str) -> List[Dict[str, Any]]:
-    """Obtém todos os issues de um repositório"""
+def get_issues_from_repo(token: str, org: str, repo_name: str, since_iso: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Obtém issues de um repositório, opcionalmente filtrando por updatedAt >= since_iso."""
+    # Quando since_iso é informado, aplicamos filterBy.since e ordenamos por UPDATED_AT DESC
     query = """
-    query($owner: String!, $repo: String!, $cursor: String) {
+    query($owner: String!, $repo: String!, $cursor: String, $since: DateTime) {
       repository(owner: $owner, name: $repo) {
-        issues(first: 100, after: $cursor, states: [OPEN, CLOSED]) {
+        issues(
+          first: 100,
+          after: $cursor,
+          states: [OPEN, CLOSED],
+          filterBy: { since: $since },
+          orderBy: { field: UPDATED_AT, direction: DESC }
+        ) {
           nodes {
             id
             number
             title
             state
             closedAt
+            updatedAt
             projectItems(first: 50) {
               nodes {
                 id
@@ -395,7 +403,7 @@ def get_issues_from_repo(token: str, org: str, repo_name: str) -> List[Dict[str,
     cursor = None
     
     while True:
-        variables = {"owner": org, "repo": repo_name, "cursor": cursor}
+        variables = {"owner": org, "repo": repo_name, "cursor": cursor, "since": since_iso}
         data = _graphql(token, query, variables)
         
         repository = data.get("repository")
@@ -602,9 +610,15 @@ Ordem de prioridade para projeto padrão:
     parser.add_argument('--repos-file', 
                        default=DEFAULT_REPOS_FILE,
                        help=f'Arquivo CSV com lista de repositórios (padrão: {DEFAULT_REPOS_FILE})')
-    parser.add_argument('--projects-list', 
+    parser.add_argument('--projects-panels-list', 
                        default=DEFAULT_PROJECTS_LIST,
                        help=f'Arquivo YAML com lista de projetos (padrão: {DEFAULT_PROJECTS_LIST})')
+    # Filtro por data: usar updatedAt como referência
+    parser.add_argument('--days', type=int, default=7,
+                       help='Processar apenas issues atualizados nos últimos N dias (padrão: 7). Use 0 para desabilitar o filtro')
+    parser.add_argument('--all-issues', action='store_true',
+                       help='Processa todos os issues (equivalente a --days 0)')
+    
     parser.add_argument('--verbose', '-v', 
                        action='store_true',
                        help='Modo verboso com mais detalhes')
@@ -638,7 +652,7 @@ def main():
     print(f"\n🔧 Configurações aplicadas:")
     print(f"   Organização: {org}")
     print(f"   Arquivo de repositórios: {args.repos_file}")
-    print(f"   Arquivo de projetos: {args.projects_list}")
+    print(f"   Arquivo de projetos: {args.projects_panels_list}")
     print(f"   Campo: {args.field}")
     
     # Mostrar qual valor foi aplicado e de onde veio
@@ -661,8 +675,8 @@ def main():
             print("❌ Nenhum repositório encontrado para processar")
             return
         
-        # Carregar lista de projetos (usar projects-panels.yml que tem os campos completos)
-        projects_list = load_projects_from_yaml('config/projects-panels.yml')
+        # Carregar lista de projetos (usar projects-panels-info.yml que tem os campos completos)
+        projects_list = load_projects_from_yaml('config/projects-panels-info.yml')
         if not projects_list:
             print("❌ Nenhum projeto encontrado na lista")
             return
@@ -706,7 +720,7 @@ def main():
         # Carregar projetos completos com campos e filtrar
         print(f"\n🔍 Carregando projetos completos e filtrando...")
         projects_with_field = load_projects_with_fields_from_yaml(
-            'config/projects-panels.yml', target_project_numbers, args.field
+            'config/projects-panels-info.yml', target_project_numbers, args.field
         )
         
         if not projects_with_field:
@@ -715,6 +729,21 @@ def main():
         
         print(f"✅ {len(projects_with_field)} projetos serão processados")
         
+        # Calcular since conforme flags de data (usar updatedAt)
+        since_iso: Optional[str]
+        if args.all_issues or (hasattr(args, 'days') and args.days == 0):
+            since_iso = None
+            if args.all_issues:
+                print("⏩ Filtro por data desabilitado: --all-issues foi informado")
+            else:
+                print("⏩ Filtro por data desabilitado: --days 0")
+        else:
+            days = getattr(args, 'days', 7)
+            base = dt.datetime.utcnow().replace(microsecond=0)
+            since_dt = base - dt.timedelta(days=days)
+            since_iso = since_dt.isoformat() + 'Z'
+            print(f"⏱️  Aplicando filtro por updatedAt desde {since_iso} (últimos {days} dias)")
+
         # Processar cada repositório
         total_changes = {"cleared": 0, "set": 0, "errors": 0, "archived_skipped": 0}
         
@@ -726,8 +755,8 @@ def main():
             print(f"\n📁 Repositório {i}/{len(repos)}: {repo['name']}")
             
             try:
-                # Obter issues do repositório
-                issues = get_issues_from_repo(github_token, org, repo['name'])
+                # Obter issues do repositório com filtro opcional por data
+                issues = get_issues_from_repo(github_token, org, repo['name'], since_iso)
                 print(f"  📋 {len(issues)} issues encontrados")
                 
                 # Processar cada issue

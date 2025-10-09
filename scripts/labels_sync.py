@@ -133,8 +133,11 @@ def load_labels_from_yaml(yaml_file):
     return labels
 
 def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=False):
-    """Sincroniza labels para um repositório específico"""
-    print(f"\n🔄 Processando repositório: {organization}/{repo_name}")
+    """Sincroniza labels para um repositório específico
+
+    Observação: o cabeçalho do repositório (📁 Repositório i/N: <nome>) é impresso pelo chamador.
+    Esta função imprime apenas linhas internas com indentação padronizada.
+    """
     
     headers = {
         'Accept': 'application/vnd.github.v3+json',
@@ -144,6 +147,11 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=F
     success_count = 0
     error_count = 0
     deleted_count = 0
+    created_count = 0
+    updated_name_count = 0
+    adjusted_color_count = 0
+    adjusted_description_count = 0
+    unchanged_count = 0
     
     # Primeiro, obter todas as labels atuais do repositório
     print("  📋 Obtendo labels atuais do repositório...")
@@ -196,6 +204,11 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=F
                 # Log específico para ajuste de formato
                 if existing_name != label_name:
                     print(f"      🔄 Ajustando formato do nome da label: '{existing_name}' → '{label_name}'")
+                    updated_name_count += 1
+                if existing_color != label_color:
+                    adjusted_color_count += 1
+                if existing_description != label_description:
+                    adjusted_description_count += 1
                 
                 # Atualizar label existente
                 update_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels/{existing_name}"
@@ -219,6 +232,7 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=F
             else:
                 print(f"      ✅ Label '{label_name}' já está atualizada")
                 success_count += 1
+                unchanged_count += 1
         else:
             # Criar nova label
             create_url = f"https://api.github.com/repos/{organization}/{repo_name}/labels"
@@ -233,6 +247,7 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=F
                 if response.status_code == 201:
                     print(f"      ✅ Label '{label_name}' criada com sucesso")
                     success_count += 1
+                    created_count += 1
                 else:
                     print(f"      ❌ Erro ao criar label '{label_name}': {response.status_code}")
                     error_count += 1
@@ -279,7 +294,17 @@ def sync_labels_for_repo(repo_name, labels, token, organization, delete_extras=F
         print("  ⏭️  Remoção de labels extras desabilitada")
     
     print(f"  📊 Resumo: {success_count} labels processadas, {deleted_count} deletadas, {error_count} erros")
-    return success_count, deleted_count, error_count
+    details = {
+        'processed': success_count + error_count,  # aproximação
+        'created': created_count,
+        'updated_name': updated_name_count,
+        'adjusted_color': adjusted_color_count,
+        'adjusted_description': adjusted_description_count,
+        'deleted': deleted_count,
+        'unchanged': unchanged_count,
+        'errors': error_count,
+    }
+    return success_count, deleted_count, error_count, details
 
 def sync_single_repo(repo_full_name, labels, token, delete_extras=False):
     """Sincroniza labels para um repositório específico (formato: org/repo)"""

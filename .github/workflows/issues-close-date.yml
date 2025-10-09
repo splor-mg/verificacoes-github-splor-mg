@@ -25,13 +25,19 @@ on:
         options:
           - "13 - Gestão à Vista AID"
           - "16 - Gestão Gabinete SPLOR"
-
-
-
       field_name:
         description: "Project Date field to set"
         required: true
         default: "Data Fim"
+      days:
+        description: "Processar issues atualizados nos últimos N dias (0 = todos)"
+        required: false
+        default: "7"
+      all_issues:
+        description: "Processar todos os issues (ignora 'days')"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   set-end-date:
@@ -87,7 +93,7 @@ jobs:
         if: inputs.update_project_list == 'sim'
         run: |
           echo "🔄 Atualizando dados dos projetos..."
-          poetry run python main.py --projects-panels --projects-list
+          poetry run python main.py --projects-panels-update
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: ${{ inputs.organization }}
@@ -106,7 +112,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add docs/ .github/workflows/issues-close-date.yml
+          git add config/ .github/workflows/issues-close-date.yml
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
@@ -137,9 +143,11 @@ jobs:
           echo "🔧 Gerenciando campo '${{ inputs.field_name }}' para projeto ${{ steps.extract_project.outputs.project_number }}"
           poetry run python main.py \
             --issues-close-date \
-            --issues-projects "${{ steps.extract_project.outputs.project_number }}" \
-            --issues-field "${{ inputs.field_name }}" \
-            --org "${{ inputs.organization }}"
+            --issues-close-date-panels "${{ steps.extract_project.outputs.project_number }}" \
+            --issues-close-date-field "${{ inputs.field_name }}" \
+            --org "${{ inputs.organization }}" \
+            ${{ inputs.all_issues && '--issues-all' || '' }} \
+            ${{ !inputs.all_issues && format('--issues-days {0}', inputs.days) || '' }}
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_ORG: ${{ inputs.organization }}
@@ -149,11 +157,11 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add docs/
+          git add config/
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update projects data for ${{ inputs.organization }} [skip ci]"
+            git commit -m "Update projects  ${{ inputs.field_name }} for ${{ inputs.organization }} [skip ci]"
             git push
           fi
 

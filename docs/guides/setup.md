@@ -75,7 +75,7 @@ GITHUB_PROJECT_PANEL_DEFAULT=13
 
 ### Verificar autenticação
 ```bash
-poetry run python main.py --list-repos
+poetry run python main.py --repos-list
 ```
 
 ### Sincronizar labels
@@ -85,7 +85,7 @@ poetry run python main.py --sync-labels
 
 ### Atualizar projetos
 ```bash
-poetry run python main.py --projects-panels
+poetry run python main.py --projects-panels-info
 ```
 
 ## 5. Configuração para GitHub Actions
@@ -109,7 +109,7 @@ Os workflows estão em `.github/workflows/`:
 ```
 config/
 ├── labels.yaml              # Template de labels
-├── projects-panels.yml       # Dados dos projetos
+├── projects-panels-info.yml       # Dados dos projetos
 ├── projects-panels-list.yml  # Lista de projetos
 ├── repos_list.csv           # Lista de repositórios
 ├── issues-types.yml          # Tipos de issues
@@ -138,5 +138,5 @@ docs/
 - Confirme se o App tem acesso aos repositórios
 
 ### Arquivos não encontrados
-- Execute `--projects-panels` para gerar arquivos
+- Execute `--projects-panels-info` para gerar arquivos
 - Verifique se a pasta `config/` existe

@@ -7,13 +7,13 @@ Este guia apresenta funcionalidades avançadas e casos de uso específicos.
 ### Workflow Completo
 ```bash
 # Executa tudo: labels, repositórios, projetos e issues
-poetry run python main.py --all --projects-panels --issues-close-date
+poetry run python main.py --all --projects-panels-info --issues-close-date
 ```
 
 ### Atualização Completa
 ```bash
 # Atualiza projetos e processa TODOS os issues
-poetry run python main.py --projects-panels --issues-close-date --issues-all
+poetry run python main.py --projects-panels-info --issues-close-date --issues-all
 ```
 
 ### Processamento por Período
@@ -31,7 +31,7 @@ poetry run python main.py --issues-close-date --issues-days 90
 
 ```bash
 # Usar campo "Data Conclusão" em vez de "Data Fim"
-poetry run python main.py --issues-close-date --issues-field "Data Conclusão"
+poetry run python main.py --issues-close-date --issues-close-date-field "Data Conclusão"
 ```
 
 ### Arquivos Customizados
@@ -68,8 +68,8 @@ poetry run task sync-labels                    # Sincronização conservadora
 poetry run task sync-labels-delete-extras      # Sincronização completa
 
 # Projetos
-poetry run task projects-panels                # Atualizar dados dos projetos
-poetry run task projects-list                  # Atualizar lista de projetos
+poetry run task projects-panels-info                # Atualizar dados dos projetos
+poetry run task projects-panels-list                  # Atualizar lista de projetos
 
 # Issues
 poetry run task issues-close-date              # Gestão de datas (7 dias)
@@ -103,7 +103,7 @@ tail -f logs/github_management.log
 1. **Backup das labels atuais**
 ```bash
 # Exportar labels existentes
-poetry run python main.py --list-repos
+poetry run python main.py --repos-list
 ```
 
 2. **Atualizar template**
@@ -132,7 +132,7 @@ poetry run python main.py --sync-labels --delete-extras
 
 ```bash
 # Atualizar dados dos projetos
-poetry run python main.py --projects-panels --projects-list
+poetry run python main.py --projects-panels-info --projects-panels-list
 
 # Atualizar workflow options
 poetry run python scripts/update_workflow_options.py
@@ -205,5 +205,5 @@ rm -f config/repos_list.csv
 
 ```bash
 # Regenerar todos os arquivos
-poetry run python main.py --all --projects-panels --issues-close-date
+poetry run python main.py --all --projects-panels-info --issues-close-date
 ```
