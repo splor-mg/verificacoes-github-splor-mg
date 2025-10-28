@@ -78,7 +78,7 @@ identificador-programas-sociais,False
 test_warninglogs_issue,True
 dados-pptx-cofin-content,True
 test_ms365_autentication,False
-cofin-apresentacoes,False
+cofin-apresentacoes,True
 dados-obz-2025,False
 painel-analise-obz-2025,False
 dados-link-obz-2025,False
@@ -95,9 +95,10 @@ relatorios-rpy,False
 .github,False
 onboarding,False
 reestimativa_dev,False
-acessos-aid,False
+acessos-aid,True
 reprex-sharepoint-upload,False
 dpmg,False
+teste-codespace,False
 dados-armazem-siafi-2025,False
 dados-reestimativa-2024,False
 dados-reestimativa-2025,False
@@ -132,3 +133,8 @@ painel-admin-sisor-2026,False
 dados-sigplan-planejamento-2026,False
 qlikview,False
 painel-admin-ppag-2026,False
+14-premio-sof,False
+execucao,False
+obz,False
+github-app,False
+reest,False

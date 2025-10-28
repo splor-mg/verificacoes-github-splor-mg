@@ -4,7 +4,7 @@ Extract GitHub ProjectV2 information and export to YAML format.
 
 This script queries the GitHub GraphQL API to extract all projects from an organization
 and their field definitions, then exports them to a YAML file with the same structure
-as projects-panels.yml.
+as projects-panels-info.yml.
 
 Environment variables used:
 - GITHUB_TOKEN: GitHub token with read access to Projects v2
@@ -14,6 +14,8 @@ Usage:
   python scripts/projects_panels.py
   python scripts/projects_panels.py --org "organization-name"
   python scripts/projects_panels.py --output "custom-output.yml"
+  python scripts/projects_panels.py --force-refresh  # Force refresh cache
+  python scripts/projects_panels.py --cache-dir "custom-cache"  # Custom cache directory
 
 Priorização de configuração:
 1. Argumento --org (maior prioridade)
@@ -29,13 +31,18 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 import requests
 import yaml
+from dotenv import load_dotenv
+
+from .cache_manager import CacheManager, log_cache_stats
+from scripts.github_app_auth import get_github_app_installation_token
 
 # Configurações padrão
 DEFAULT_ORG = 'splor-mg'
-DEFAULT_OUTPUT = 'docs/projects-panels.yml'
-DEFAULT_LIST_OUTPUT = 'docs/projects-panels-list.yml'
+DEFAULT_OUTPUT = 'config/projects-panels-info.yml'
+DEFAULT_LIST_OUTPUT = 'config/projects-panels-list.yml'
 
 # Load environment variables from .env file
 def load_dotenv():
@@ -84,8 +91,21 @@ def _graphql(token: str, query: str, variables: Dict[str, Any]) -> Dict[str, Any
     return data["data"]
 
 
-def get_organization_projects(token: str, org: str) -> List[Dict[str, Any]]:
-    """Get all projects from an organization."""
+def get_organization_projects(token: str, org: str, 
+                            cache_manager: Optional[CacheManager] = None,
+                            force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """Get all projects from an organization with intelligent caching."""
+    if cache_manager is None:
+        cache_manager = CacheManager()
+    
+    # Tentar recuperar do cache
+    if not force_refresh:
+        cached_projects = cache_manager.get('projects', org)
+        if cached_projects:
+            print(f"📦 Usando projetos em cache para {org}")
+            return cached_projects.get('projects', [])
+    
+    print(f"🔄 Buscando projetos da organização {org}...")
     query = """
     query($org: String!, $cursor: String) {
       organization(login: $org) {
@@ -153,6 +173,15 @@ def get_organization_projects(token: str, org: str) -> List[Dict[str, Any]]:
             break
             
         cursor = page_info["endCursor"]
+    
+    # Armazenar no cache
+    cache_data = {
+        'projects': all_projects,
+        'cached_at': datetime.now().isoformat(),
+        'org': org,
+        'count': len(all_projects)
+    }
+    cache_manager.set('projects', cache_data, org)
     
     return all_projects
 
@@ -265,16 +294,41 @@ Exemplos de uso:
     )
     parser.add_argument(
         "--output", 
-        help=f"Output YAML file path (padrão: {DEFAULT_OUTPUT})"
+        help=f"Output YAML file path (info)"
     )
     parser.add_argument(
         "--list-output", 
-        help=f"Output list YAML file path (padrão: {DEFAULT_LIST_OUTPUT})"
+        help=f"Output list YAML file path (lista)"
+    )
+    parser.add_argument(
+        "--only-info",
+        action="store_true",
+        help="Gerar apenas o arquivo de info (ignora lista)"
+    )
+    parser.add_argument(
+        "--only-list",
+        action="store_true",
+        help="Gerar apenas o arquivo de lista (ignora info)"
     )
     parser.add_argument(
         "--verbose", "-v", 
         action="store_true",
         help="Modo verboso com mais detalhes"
+    )
+    parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Force refresh all caches"
+    )
+    parser.add_argument(
+        "--cache-dir",
+        default="logs/cache",
+        help="Cache directory"
+    )
+    parser.add_argument(
+        "--cache-stats",
+        action="store_true",
+        help="Show cache statistics"
     )
     return parser.parse_args()
 
@@ -283,11 +337,19 @@ def main() -> None:
     """Main function."""
     args = parse_args()
     
+    # Inicializar cache manager
+    cache_manager = CacheManager(cache_dir=args.cache_dir)
+    
+    # Mostrar estatísticas de cache se solicitado
+    if args.cache_stats:
+        log_cache_stats(cache_manager)
+        return
+    
     # Carregar variáveis de ambiente
     load_dotenv()
     
-    # Get GitHub token
-    token = os.getenv("GITHUB_TOKEN") or _require_env("GITHUB_TOKEN")
+    # Get GitHub token via GitHub App
+    token = get_github_app_installation_token()
     
     # Aplicar hierarquia de priorização (argumentos > env vars > padrões)
     # 1. Argumentos da linha de comando (maior prioridade)
@@ -295,23 +357,54 @@ def main() -> None:
     # 3. Valores padrão (menor prioridade)
     
     org = args.org or os.getenv("GITHUB_ORG") or DEFAULT_ORG
-    output = args.output or DEFAULT_OUTPUT
-    list_output = args.list_output or DEFAULT_LIST_OUTPUT
+    # Determinar quais arquivos salvar com base nos argumentos fornecidos
+    # Suporte a modo forçado via env PROJECTS_ONLY_MODE (setado pelo main)
+    only_mode_env = os.getenv("PROJECTS_ONLY_MODE", "").lower().strip()
+    if only_mode_env == "info":
+        args.only_info = True
+        args.only_list = False
+    elif only_mode_env == "list":
+        args.only_info = False
+        args.only_list = True
+    provided_output = args.output is not None
+    provided_list_output = args.list_output is not None
+
+    if args.only_info and args.only_list:
+        # Em caso de conflito, prioriza update completo
+        only_info = False
+        only_list = False
+    else:
+        only_info = args.only_info
+        only_list = args.only_list
+
+    if only_info:
+        save_info = True
+        save_list = False
+    elif only_list:
+        save_info = False
+        save_list = True
+    else:
+        # Comportamento padrão: se nada especificado, gera ambos;
+        # se só um caminho for especificado, gera apenas aquele
+        save_info = provided_output or (not provided_output and not provided_list_output)
+        save_list = provided_list_output or (not provided_output and not provided_list_output)
+    output = args.output if provided_output else (DEFAULT_OUTPUT if save_info else None)
+    list_output = args.list_output if provided_list_output else (DEFAULT_LIST_OUTPUT if save_list else None)
     
     if args.verbose:
         print(f"🔍 Extraindo projetos da organização: {org}")
-        print(f"📁 Arquivo de saída: {output}")
-        print(f"📋 Arquivo de lista: {list_output}")
+        print(f"📁 Arquivo de saída (info): {output if save_info else '— (não salvar)'}")
+        print(f"📋 Arquivo de lista: {list_output if save_list else '— (não salvar)'}")
         print(f"🔧 Configurações aplicadas:")
         print(f"   Organização: {org}")
         print(f"   Arquivo de saída: {output}")
         print(f"   Arquivo de lista: {list_output}")
-        print(f"   Token: {token[:8]}...")
+        print(f"   Token (App): {token[:8]}...")
     
     try:
         # Get all projects from organization
         print(f"📊 Buscando projetos da organização '{org}'...")
-        projects = get_organization_projects(token, org)
+        projects = get_organization_projects(token, org, cache_manager, args.force_refresh)
         
         if not projects:
             print(f"⚠️  Nenhum projeto encontrado na organização '{org}'")
@@ -320,32 +413,37 @@ def main() -> None:
         print(f"✅ Encontrados {len(projects)} projetos")
         
         # Convert to YAML structure
-        yaml_data = projects_to_yaml_structure(projects, org)
-        list_data = projects_to_list_structure(projects, org)
+        yaml_data = projects_to_yaml_structure(projects, org) if save_info else None
+        list_data = projects_to_list_structure(projects, org) if save_list else None
         
         # Ensure output directories exist
-        output_path = Path(output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        list_output_path = Path(list_output)
-        list_output_path.parent.mkdir(parents=True, exist_ok=True)
+        if save_info:
+            output_path = Path(output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+        if save_list:
+            list_output_path = Path(list_output)
+            list_output_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Save to YAML files
-        save_yaml(yaml_data, str(output_path))
-        save_yaml(list_data, str(list_output_path))
+        if save_info and yaml_data is not None:
+            save_yaml(yaml_data, str(output_path))
+        if save_list and list_data is not None:
+            save_yaml(list_data, str(list_output_path))
         
         # Print summary
         print(f"\n📋 Resumo da extração:")
         print(f"   Organização: {org}")
         print(f"   Total de projetos: {len(projects)}")
-        print(f"   Arquivo completo: {output}")
-        print(f"   Arquivo de lista: {list_output}")
+        if save_info:
+            print(f"   Arquivo completo (info): {output}")
+        if save_list:
+            print(f"   Arquivo de lista: {list_output}")
         
-        total_fields = sum(len(p["fields"]) for p in yaml_data["projects"])
-        print(f"   Total de campos: {total_fields}")
-        
-        for project in yaml_data["projects"]:
-            print(f"   - {project['name']} (#{project['number']}): {len(project['fields'])} campos")
+        if save_info and yaml_data is not None:
+            total_fields = sum(len(p["fields"]) for p in yaml_data["projects"])
+            print(f"   Total de campos: {total_fields}")
+            for project in yaml_data["projects"]:
+                print(f"   - {project['name']} (#{project['number']}): {len(project['fields'])} campos")
         
     except Exception as e:
         print(f"❌ Erro durante a extração: {e}")

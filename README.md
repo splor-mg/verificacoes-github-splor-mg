@@ -1,80 +1,94 @@
 
 # Verificações GitHub SPLOR-MG
 
-Scripts para extrair e sincronizar informações de organizações GitHub.
+Automatiza a gestão de organizações GitHub: inventaria repositórios, sincroniza labels conforme `config/labels.yaml`, atualiza dados de Projects (v2) e gerencia campos de data em issues — tudo autenticado via GitHub App e API GraphQL.
 
 ## Scripts Disponíveis
 
 ### 1. Listar Repositórios
 
 ```bash
-poetry run python main.py --list-repos
+poetry run python main.py --repos-list
+# ou
+poetry run task repos-list
 ```
 
-Gera `docs/repos_list.csv` com todos os repositórios da organização.
+Gera `config/repos_list.csv` com todos os repositórios da organização.
 
-### 2. Sincronizar Labels da Organização
+### 2. Painéis de Projetos - Listagem e Informações
 
 ```bash
-poetry run python main.py --sync-org
+poetry run python main.py --projects-panels-list
+# ou
+poetry run task projects-panels-list
 ```
 
-Sincroniza labels padrão da organização baseado em `docs/labels.yaml`.
+Extrai dados completos dos projetos GitHub (Projects v2) e gera `config/projects-panels-info.yml` e `config/projects-panels-list.yml`.
 
 ### 3. Sincronizar Labels nos Repositórios
 
 ```bash
-poetry run python main.py --sync-repos
+poetry run python main.py --sync-labels
+# ou
+poetry run task sync-labels
+
+# remove labels extras (modo completo)
+poetry run python main.py --sync-labels --delete-extras
+# ou
+poetry run task sync-labels-delete-extras
 ```
 
-Sincroniza labels em todos os repositórios (cria, atualiza e **deleta labels extras**).
+Por padrão, a sincronização é aditiva: garante que todos os repositórios tenham as labels definidas em `config/labels.yaml` (criando/atualizando quando necessário) sem remover labels extras; a exclusão só ocorre com `--delete-extras`.
 
-### 4. Executar Todas as Operações
 
-```bash
-poetry run python main.py --all
-```
+**⚠️ Alerta Importante sobre Labels**
 
-### 5. Modo Conservador (não deleta labels extras)
+**ATENÇÃO**: Se eventualmente alguém atualizar manualmente o nome de uma label existente (por exemplo, alterar de "bug" para "bugs") sem alterar as default-labels em 'config/labels.yaml e os scripts de sincronização de labels deste repositório rodarem com o parâmetro "--delete-extras", a label  "bugs" será **removida de todos os issues** onde estava aplicada, e uma nova label "bug" criarda.
 
-```bash
-poetry run python main.py --sync-repos --no-delete-extras
-```
-
-## Configuração
-
-1. **Criar arquivo `.env`** na raiz do projeto:
-
-```bash
-GITHUB_TOKEN=seu_token_aqui
-GITHUB_ORG=nome_da_organizacao
-```
-
-2. **Gerar token GitHub** em: Settings → Developer settings → Personal access tokens
-   - Escopo: `repo` (para acesso aos repositórios)
-   - Escopo: `admin:org` (para gerenciar labels organizacionais)
-
-3. **Secrets necessários:**
-   - **Organização**: Para repositórios públicos com o nome GH_TOKEN
-   - **Repositório**: Para repositórios privados com o nome GH_TOKEN
-
-## ⚠️ Alerta Importante sobre Labels
-
-**ATENÇÃO**: Se eventualmente alguém atualizar manualmente o nome de uma label existente (por exemplo, alterar de "bug" para "bugs") sem alterar as default-labels em 'docs/labels.yml', quando os scripts de sincronização de labels deste repositório rodarem, o nome da label  "bugs" retornará para "bug" e será **automaticamente removida de todos os issues** onde estava aplicada.
-
-**O que acontece quando você altera:**
-
-- **Nome da label**: A label é removida de todos os issues automaticamente
-- **Descrição da label**: ✅ Não afeta os issues (mantém-se aplicada)
-- **Cor da label**: ✅ Não afeta os issues (mantém-se aplicada)
 
 **Recomendação**: Se precisar alterar o nome de uma label, considere:
 
 1. Criar uma nova label com o nome desejado
 2. Aplicar a nova label nos issues que tinham a label antiga
 3. Remover a label antiga apenas após a migração
-4. Atualizar o template `docs/labels.yaml` com o novo nome da label
-5. Executar os protocolos de sincronização (`poetry run python main.py --sync-repos`)
+4. Atualizar o template `config/labels.yaml` com o novo nome da label
+5. Executar os protocolos de sincronização (`poetry run python main.py --sync-labels`)
+
+
+### 4. Verificar/Preencher `Data Fim` nos Issues Fechados
+
+```bash
+poetry run python main.py --issues-close-date
+# ou
+poetry run task issues-close-date
+```
+
+Gerencia automaticamente o campo "Data Fim" em issues baseado no status e data de fechamento dos isses dos últimos 7 dias. 
+
+### 5. Executar Todas as Operações
+
+```bash
+poetry run python main.py --all
+# ou
+poetry run task all
+```
+
+## Configuração
+
+1. **Criar arquivo `.env`** na raiz do projeto (GitHub App):
+
+```bash
+cp .env.example .env
+```
+
+2. **Configuração de autenticação**
+
+A autenticação é feita via **GitHub App** (nome: `verificacoes-github-splor-mg`). O sistema gera um JWT assinado com a chave privada do App e o troca por um token de instalação temporário, eliminando a necessidade de PATs. Para GitHub Actions, **configure os seguintes secrets**:
+
+- `GH_APP_ID`: ID numérico do GitHub App
+- `GH_APP_INSTALLATION_ID`: ID da instalação do App na organização  
+- `GH_APP_PRIVATE_KEY`: Chave privada do App (formato PEM)
+
 
 ## Instalação
 
@@ -89,22 +103,4 @@ GITHUB_ORG=nome_da_organizacao
 poetry install
 ```
 
-## Organização
 
-- **`scripts/`**: Scripts Python para sincronização de labels e listagem de repositórios
-  - `repos_list.py`: Lista repositórios da organização
-  - `labels_sync.py`: Sincroniza labels entre repositórios
-- **`docs/`**: Arquivos de configuração e dados
-  - `labels.yaml`: Template de labels padrão
-  - `repos_list.csv`: Lista de repositórios (gerado automaticamente)
-- **`.github/workflows/`**: Workflows GitHub Actions para automação
-  - `labels-sync.yml`: Sincronização automática de labels
-
-## Uso via GitHub Actions
-
-O projeto inclui um workflow que pode ser executado manualmente para sincronizar labels:
-
-1. Vá para a aba "Actions"
-2. Selecione "labels-sync"
-3. Clique em "Run workflow"
-4. Escolha a organização e execute

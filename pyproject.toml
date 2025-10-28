@@ -10,6 +10,9 @@ packages = [{include = "scripts", from = "."}]
 python = "^3.8.1"
 requests = "^2.31.0"
 PyYAML = "^6.0"
+PyJWT = "^2.9.0"
+cryptography = "^43.0.0"
+python-dotenv = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.0"
@@ -22,35 +25,44 @@ taskipy = "^1.14.1"
 [tool.poetry.scripts]
 github-org-manager = "main:main"
 
+
 [tool.taskipy.tasks]
-# Tasks para gerenciamento do GitHub
-all = { cmd = "python main.py --all", help = "Executa todas as operações: sincroniza organização, lista repositórios e sincroniza labels" }
-list-repos = { cmd = "python main.py --list-repos", help = "Lista todos os repositórios da organização e salva em docs/repos_list.csv" }
-sync-repos = { cmd = "python main.py --sync-repos", help = "Sincroniza labels em todos os repositórios da organização (modo conservador)" }
-sync-org = { cmd = "python main.py --sync-org", help = "Sincroniza labels padrão da organização GitHub" }
-verbose = { cmd = "python main.py --verbose", help = "Executa com logs detalhados e verbosos" }
+# Task principal que executa todas as outras
+all = { cmd = """
+task repos-list &&
+task projects-panels-list &&
+task projects-panels-info &&
+task sync-labels &&
+task issues-close-date
+""", help = "Executa: repos-list, projects-panels-list, projects-panels-info, sync-labels e issues-close-date (nesta ordem)" }
+
+# Tasks centrais para gerenciamento do GitHub
+repos-list = { cmd = "python main.py --repos-list", help = "Lista todos os repositórios da organização e salva em config/repos_list.csv" }
+projects-panels-list = { cmd = "python main.py --projects-panels-list", help = "Atualiza lista de projetos GitHub (projects-panels-list.yml)" }
+projects-panels-info = { cmd = "python main.py --projects-panels-info", help = "Atualiza dados completos dos painéis de projetos GitHub (projects-panels-info.yml)" }
+sync-labels = { cmd = "python main.py --sync-labels", help = "Sincroniza labels em todos os repositórios da organização (modo conservador)" }
+issues-close-date = { cmd = "python main.py --issues-close-date", help = "Gerencia campo Data Fim em projetos GitHub de issues atualizados nos últimos 7 dias" }
+
 
 # Tasks de personalização avançada
-sync-org-custom = { cmd = "python main.py --org", help = "Sincroniza organização específica (use: task sync-org-custom minha-org)" }
-sync-repos-custom = { cmd = "python main.py --repos", help = "Sincroniza repositórios específicos (use: task sync-repos-custom repo1,repo2)" }
+# Painéis de projetos
+projects-panels-update = { cmd = "python main.py --projects-panels-update", help = "Atualiza ambos os arquivos de painéis de projetos (info e lista)" }
+# Labels
 sync-labels-custom = { cmd = "python main.py --labels", help = "Usa arquivo de labels customizado (use: task sync-labels-custom /caminho/labels.yaml)" }
-sync-delete-extras = { cmd = "python main.py --sync-repos --delete-extras", help = "Sincroniza labels e remove labels extras (modo completo)" }
+sync-labels-delete-extras = { cmd = "python main.py --sync-labels --delete-extras", help = "Sincroniza labels e remove labels extras (modo completo)" }
+sync-labels-repos = { cmd = "python main.py --repos", help = "Sincroniza labels em repositórios específicos (use: task sync-labels-repos repo1,repo2)" }
+# Issues
+issues-close-date-all = { cmd = "python main.py --issues-close-date --issues-all", help = "Gerencia campo Data Fim em projetos GitHub de todos os issues" }
+issues-close-date-days = { cmd = "python main.py --issues-close-date --issues-days", help = "Gerencia campo Data Fim em projetos GitHub de issues atualizados nos últimos N dias (ex: task issues-close-date-days 30 para últimos 30 dias)" }
+issues-close-date-panel = { cmd = "python main.py --issues-close-date-panel", help = "Seleção interativa de painel de projeto para gerenciar issues (close-date)" }
+issues-close-date-panels = { cmd = "python main.py --issues-close-date-panels", help = "Gerencia issues (close-date) em paineis de projetos específicos (use: task issues-close-date-panels 1,2,3)" }
+issues-close-date-field = { cmd = "python main.py --issues-close-date-field", help = "Usa campo customizado para issues (close-date) (use: task issues-close-date-field 'Data Conclusão')" }
 
-# Tasks para projetos GitHub
-projects-panels = { cmd = "python main.py --projects-panels", help = "Atualiza dados completos dos projetos GitHub (projects-panels.yml)" }
-projects-list = { cmd = "python main.py --projects-list", help = "Atualiza lista de projetos GitHub (projects-panels-list.yml)" }
-projects-update = { cmd = "python main.py --projects-panels --projects-list", help = "Atualiza ambos os arquivos de projetos" }
-
-# Tasks para issues e campos de data
-issues-close-date = { cmd = "python main.py --issues-close-date", help = "Gerencia campo Data Fim em projetos GitHub" }
-issues-panel = { cmd = "python main.py --issues-panel", help = "Seleção interativa de projetos para gerenciar issues" }
-issues-projects = { cmd = "python main.py --issues-projects", help = "Gerencia issues em projetos específicos (use: task issues-projects 1,2,3)" }
-issues-field = { cmd = "python main.py --issues-field", help = "Usa campo customizado para issues (use: task issues-field 'Data Conclusão')" }
-update-workflow-options = { cmd = "python scripts/update_workflow_options.py", help = "Atualiza opções de projetos no workflow GitHub Actions dinamicamente" }
 
 # Tasks combinadas
-projects-and-issues = { cmd = "python main.py --projects-panels --issues-panel", help = "Atualiza projetos e gerencia issues com seleção interativa" }
-full-workflow = { cmd = "python main.py --all --projects-panels --issues-panel", help = "Executa workflow completo: labels, repositórios, projetos e issues" }
+panels-and-issues = { cmd = "python main.py --projects-panels-info --issues-close-date-panel", help = "Atualiza projetos e gerencia issues (close-date) com seleção interativa" }
+update-workflow-options = { cmd = "python scripts/update_workflow_options.py", help = "Atualiza opções de projetos no workflow GitHub Actions dinamicamente" }
+verbose = { cmd = "python main.py --verbose", help = "Executa com logs detalhados e verbosos" }
 
 # Tasks de setup
 install-dev = "poetry install --with dev"

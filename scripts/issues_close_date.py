@@ -18,6 +18,9 @@ Environment variables used:
 Usage:
   python scripts/issues_close_date.py                                    # Usa projeto do .env ou padrão hardcoded
   python scripts/issues_close_date.py --panel                            # Seleção interativa de projetos
+  python scripts/issues_close_date.py --force-refresh                    # Force refresh cache
+  python scripts/issues_close_date.py --cache-dir "custom-cache"         # Custom cache directory
+  python scripts/issues_close_date.py --skip-cache                       # Skip cache completely
   python scripts/issues_close_date.py --projects "1,2,3"                 # Projetos específicos via argumento
   python scripts/issues_close_date.py --org "minha-org" --verbose        # Organização diferente
 
@@ -41,11 +44,14 @@ from typing import Any, Dict, List, Optional
 
 import requests
 import yaml
+from dotenv import load_dotenv
+from scripts.github_app_auth import get_github_app_installation_token
+from cache_manager import CacheManager, IssueProcessingState, log_cache_stats
 
 # Configurações padrão
 DEFAULT_ORG = 'splor-mg'
-DEFAULT_REPOS_FILE = 'docs/repos_list.csv'
-DEFAULT_PROJECTS_LIST = 'docs/projects-panels-list.yml'
+DEFAULT_REPOS_FILE = 'config/repos_list.csv'
+DEFAULT_PROJECTS_LIST = 'config/projects-panels-list.yml'
 DEFAULT_PROJECT_PANEL = 13  # Número do projeto "Gestão à Vista AID"
 DEFAULT_FIELD_NAME = 'Data Fim'
 
@@ -338,18 +344,42 @@ def get_project_field_id(project: Dict[str, Any], field_name: str = DEFAULT_FIEL
             return field['id']
     return None
 
-def get_issues_from_repo(token: str, org: str, repo_name: str) -> List[Dict[str, Any]]:
-    """Obtém todos os issues de um repositório"""
+def get_issues_from_repo(token: str, org: str, repo_name: str, since_iso: Optional[str] = None,
+                        cache_manager: Optional[CacheManager] = None,
+                        force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """Obtém issues de um repositório com cache inteligente."""
+    if cache_manager is None:
+        cache_manager = CacheManager()
+    
+    # Chave do cache baseada em parâmetros
+    cache_key = f"{org}_{repo_name}_{since_iso or 'all'}"
+    
+    # Tentar recuperar do cache
+    if not force_refresh:
+        cached_issues = cache_manager.get('issues', cache_key)
+        if cached_issues:
+            print(f"📦 Usando issues em cache para {repo_name}")
+            return cached_issues.get('issues', [])
+    
+    print(f"🔄 Buscando issues do repositório {repo_name}...")
+    # Quando since_iso é informado, aplicamos filterBy.since e ordenamos por UPDATED_AT DESC
     query = """
-    query($owner: String!, $repo: String!, $cursor: String) {
+    query($owner: String!, $repo: String!, $cursor: String, $since: DateTime) {
       repository(owner: $owner, name: $repo) {
-        issues(first: 100, after: $cursor, states: [OPEN, CLOSED]) {
+        issues(
+          first: 100,
+          after: $cursor,
+          states: [OPEN, CLOSED],
+          filterBy: { since: $since },
+          orderBy: { field: UPDATED_AT, direction: DESC }
+        ) {
           nodes {
             id
             number
             title
             state
             closedAt
+            updatedAt
             projectItems(first: 50) {
               nodes {
                 id
@@ -394,7 +424,7 @@ def get_issues_from_repo(token: str, org: str, repo_name: str) -> List[Dict[str,
     cursor = None
     
     while True:
-        variables = {"owner": org, "repo": repo_name, "cursor": cursor}
+        variables = {"owner": org, "repo": repo_name, "cursor": cursor, "since": since_iso}
         data = _graphql(token, query, variables)
         
         repository = data.get("repository")
@@ -409,6 +439,17 @@ def get_issues_from_repo(token: str, org: str, repo_name: str) -> List[Dict[str,
             break
             
         cursor = page_info.get("endCursor")
+    
+    # Armazenar no cache
+    cache_data = {
+        'issues': all_issues,
+        'cached_at': dt.datetime.now().isoformat(),
+        'repo': repo_name,
+        'org': org,
+        'since': since_iso,
+        'count': len(all_issues)
+    }
+    cache_manager.set('issues', cache_data, cache_key)
     
     return all_issues
 
@@ -428,7 +469,7 @@ def get_project_item_status_and_date(project_item: Dict[str, Any], field_name: s
     
     return status, date_value
 
-def clear_date_field(token: str, project_id: str, item_id: str, field_id: str) -> bool:
+def clear_date_field(token: str, project_id: str, item_id: str, field_id: str) -> tuple[bool, str]:
     """Limpa o campo de data (define como null)"""
     mutation = """
     mutation($project: ID!, $item: ID!, $field: ID!) {
@@ -445,12 +486,16 @@ def clear_date_field(token: str, project_id: str, item_id: str, field_id: str) -
     
     try:
         _graphql(token, mutation, {"project": project_id, "item": item_id, "field": field_id})
-        return True
+        return True, ""
     except Exception as e:
-        print(f"      ❌ Erro ao limpar campo: {e}")
-        return False
+        error_msg = str(e)
+        if "archived and cannot be updated" in error_msg:
+            return False, "archived"
+        else:
+            print(f"      ❌ Erro ao limpar campo: {e}")
+            return False, "error"
 
-def set_date_field(token: str, project_id: str, item_id: str, field_id: str, date_value: str) -> bool:
+def set_date_field(token: str, project_id: str, item_id: str, field_id: str, date_value: str) -> tuple[bool, str]:
     """Define o campo de data com o valor especificado"""
     mutation = """
     mutation($project: ID!, $item: ID!, $field: ID!, $value: Date!) {
@@ -472,15 +517,19 @@ def set_date_field(token: str, project_id: str, item_id: str, field_id: str, dat
             "field": field_id, 
             "value": date_value
         })
-        return True
+        return True, ""
     except Exception as e:
-        print(f"      ❌ Erro ao definir campo: {e}")
-        return False
+        error_msg = str(e)
+        if "archived and cannot be updated" in error_msg:
+            return False, "archived"
+        else:
+            print(f"      ❌ Erro ao definir campo: {e}")
+            return False, "error"
 
 def process_issue_for_projects(token: str, issue: Dict[str, Any], target_projects: List[Dict[str, Any]], 
                               field_name: str = DEFAULT_FIELD_NAME) -> Dict[str, int]:
     """Processa um issue para todos os projetos alvo"""
-    changes = {"cleared": 0, "set": 0, "errors": 0}
+    changes = {"cleared": 0, "set": 0, "errors": 0, "archived_skipped": 0}
     
     issue_number = issue.get('number')
     issue_title = issue.get('title', '')
@@ -524,9 +573,13 @@ def process_issue_for_projects(token: str, issue: Dict[str, Any], target_project
             # Status != "Done": campo deve estar vazio
             if current_date:
                 print(f"      🗑️  Limpando campo '{field_name}' (status != Done)")
-                if clear_date_field(token, project_id, project_item['id'], field_id):
+                success, error_type = clear_date_field(token, project_id, project_item['id'], field_id)
+                if success:
                     changes["cleared"] += 1
                     print(f"      ✅ Campo '{field_name}' limpo com sucesso")
+                elif error_type == "archived":
+                    print(f"      ⏭️  Item arquivado no projeto - ignorando atualização")
+                    changes["archived_skipped"] += 1
                 else:
                     changes["errors"] += 1
             else:
@@ -537,9 +590,13 @@ def process_issue_for_projects(token: str, issue: Dict[str, Any], target_project
             if not current_date and issue_closed_at and issue_state == 'CLOSED':
                 date_value = _iso_date(issue_closed_at)
                 print(f"      📅 Definindo campo '{field_name}' para {date_value} (status = Done, issue fechado)")
-                if set_date_field(token, project_id, project_item['id'], field_id, date_value):
+                success, error_type = set_date_field(token, project_id, project_item['id'], field_id, date_value)
+                if success:
                     changes["set"] += 1
                     print(f"      ✅ Campo '{field_name}' definido para {date_value}")
+                elif error_type == "archived":
+                    print(f"      ⏭️  Item arquivado no projeto - ignorando atualização")
+                    changes["archived_skipped"] += 1
                 else:
                     changes["errors"] += 1
             elif current_date:
@@ -585,9 +642,25 @@ Ordem de prioridade para projeto padrão:
     parser.add_argument('--repos-file', 
                        default=DEFAULT_REPOS_FILE,
                        help=f'Arquivo CSV com lista de repositórios (padrão: {DEFAULT_REPOS_FILE})')
-    parser.add_argument('--projects-list', 
+    parser.add_argument('--projects-panels-list', 
                        default=DEFAULT_PROJECTS_LIST,
                        help=f'Arquivo YAML com lista de projetos (padrão: {DEFAULT_PROJECTS_LIST})')
+    # Filtro por data: usar updatedAt como referência
+    parser.add_argument('--days', type=int, default=7,
+                       help='Processar apenas issues atualizados nos últimos N dias (padrão: 7). Use 0 para desabilitar o filtro')
+    parser.add_argument('--all-issues', action='store_true',
+                       help='Processa todos os issues (equivalente a --days 0)')
+    
+    # Argumentos de cache
+    parser.add_argument('--force-refresh', action='store_true',
+                       help='Force refresh all caches')
+    parser.add_argument('--cache-dir', default='logs/cache',
+                       help='Cache directory')
+    parser.add_argument('--skip-cache', action='store_true',
+                       help='Skip cache completely')
+    parser.add_argument('--cache-stats', action='store_true',
+                       help='Show cache statistics')
+    
     parser.add_argument('--verbose', '-v', 
                        action='store_true',
                        help='Modo verboso com mais detalhes')
@@ -598,18 +671,26 @@ def main():
     """Função principal"""
     args = parse_arguments()
     
+    # Inicializar cache manager
+    cache_manager = CacheManager(cache_dir=args.cache_dir)
+    issue_state = IssueProcessingState(cache_manager)
+    
+    # Mostrar estatísticas de cache se solicitado
+    if args.cache_stats:
+        log_cache_stats(cache_manager)
+        return
+    
     # Carregar variáveis de ambiente
     load_dotenv()
     
-    # Obter token do GitHub
-    github_token = os.getenv('GITHUB_TOKEN')
-    
-    if not github_token:
-        print("❌ GITHUB_TOKEN não encontrado!")
-        print("💡 Certifique-se de que o arquivo .env contém: GITHUB_TOKEN=seu_token_aqui")
+    # Obter token do GitHub via App
+    try:
+        github_token = get_github_app_installation_token()
+    except Exception as e:
+        print(f"❌ Falha ao gerar token do GitHub App: {e}")
         return
 
-    print(f"🔑 Usando token: {github_token[:8]}...")
+    print(f"🔑 Usando token (App): {github_token[:8]}...")
     
     # Atualizar dados dos projetos primeiro
     if not update_projects_data():
@@ -622,7 +703,7 @@ def main():
     print(f"\n🔧 Configurações aplicadas:")
     print(f"   Organização: {org}")
     print(f"   Arquivo de repositórios: {args.repos_file}")
-    print(f"   Arquivo de projetos: {args.projects_list}")
+    print(f"   Arquivo de projetos: {args.projects_panels_list}")
     print(f"   Campo: {args.field}")
     
     # Mostrar qual valor foi aplicado e de onde veio
@@ -645,8 +726,8 @@ def main():
             print("❌ Nenhum repositório encontrado para processar")
             return
         
-        # Carregar lista de projetos (usar projects-panels.yml que tem os campos completos)
-        projects_list = load_projects_from_yaml('docs/projects-panels.yml')
+        # Carregar lista de projetos (usar projects-panels-info.yml que tem os campos completos)
+        projects_list = load_projects_from_yaml('config/projects-panels-info.yml')
         if not projects_list:
             print("❌ Nenhum projeto encontrado na lista")
             return
@@ -690,7 +771,7 @@ def main():
         # Carregar projetos completos com campos e filtrar
         print(f"\n🔍 Carregando projetos completos e filtrando...")
         projects_with_field = load_projects_with_fields_from_yaml(
-            'docs/projects-panels.yml', target_project_numbers, args.field
+            'config/projects-panels-info.yml', target_project_numbers, args.field
         )
         
         if not projects_with_field:
@@ -699,8 +780,23 @@ def main():
         
         print(f"✅ {len(projects_with_field)} projetos serão processados")
         
+        # Calcular since conforme flags de data (usar updatedAt)
+        since_iso: Optional[str]
+        if args.all_issues or (hasattr(args, 'days') and args.days == 0):
+            since_iso = None
+            if args.all_issues:
+                print("⏩ Filtro por data desabilitado: --all-issues foi informado")
+            else:
+                print("⏩ Filtro por data desabilitado: --days 0")
+        else:
+            days = getattr(args, 'days', 7)
+            base = dt.datetime.utcnow().replace(microsecond=0)
+            since_dt = base - dt.timedelta(days=days)
+            since_iso = since_dt.isoformat() + 'Z'
+            print(f"⏱️  Aplicando filtro por updatedAt desde {since_iso} (últimos {days} dias)")
+
         # Processar cada repositório
-        total_changes = {"cleared": 0, "set": 0, "errors": 0}
+        total_changes = {"cleared": 0, "set": 0, "errors": 0, "archived_skipped": 0}
         
         for i, repo in enumerate(repos, 1):
             if repo.get('archived', False):
@@ -710,12 +806,25 @@ def main():
             print(f"\n📁 Repositório {i}/{len(repos)}: {repo['name']}")
             
             try:
-                # Obter issues do repositório
-                issues = get_issues_from_repo(github_token, org, repo['name'])
+                # Obter issues do repositório com filtro opcional por data
+                issues = get_issues_from_repo(github_token, org, repo['name'], since_iso, 
+                                            cache_manager, args.force_refresh)
                 print(f"  📋 {len(issues)} issues encontrados")
                 
-                # Processar cada issue
+                # Processar apenas issues que mudaram (se cache não estiver desabilitado)
+                processed_count = 0
+                skipped_count = 0
+                
                 for issue in issues:
+                    issue_id = issue['id']
+                    
+                    # Verificar se issue mudou (se cache não estiver desabilitado)
+                    if not args.skip_cache and not issue_state.has_issue_changed(
+                        repo['name'], issue_id, issue
+                    ):
+                        skipped_count += 1
+                        continue
+                    
                     changes = process_issue_for_projects(
                         github_token, issue, projects_with_field, args.field
                     )
@@ -723,6 +832,12 @@ def main():
                     # Acumular mudanças
                     for key in total_changes:
                         total_changes[key] += changes[key]
+                    
+                    # Marcar como processado
+                    issue_state.mark_issue_processed(repo['name'], issue_id, issue)
+                    processed_count += 1
+                
+                print(f"  📊 {processed_count} issues processados, {skipped_count} pulados (cache)")
                 
                 # Pausa entre repositórios para não sobrecarregar a API
                 if i < len(repos):
@@ -740,6 +855,7 @@ def main():
         print(f"📊 Total de projetos processados: {len(projects_with_field)}")
         print(f"✅ Campos limpos: {total_changes['cleared']}")
         print(f"📅 Campos preenchidos: {total_changes['set']}")
+        print(f"⏭️  Itens arquivados ignorados: {total_changes['archived_skipped']}")
         print(f"❌ Erros encontrados: {total_changes['errors']}")
         
         if total_changes["errors"] == 0:

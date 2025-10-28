@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 
-def load_projects_list(yaml_file: str = 'docs/projects-panels-list.yml'):
+def load_projects_list(yaml_file: str = 'config/projects-panels-list.yml'):
     """Carrega a lista de projetos do arquivo YAML"""
     if not Path(yaml_file).exists():
         print(f"❌ Arquivo {yaml_file} não encontrado!")

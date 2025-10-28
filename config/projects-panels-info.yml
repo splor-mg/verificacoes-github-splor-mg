@@ -82,11 +82,7 @@ projects:
   - name: Iteration
     id: PVTIF_lADOByfrJc4A_PsyzgyaBdA
     dataType: ITERATION
-    iterations:
-    - id: 53e0ebba
-      title: Iteration 3
-      startDate: '2025-08-27'
-      endDate: ''
+    iterations: []
   - name: Start date
     id: PVTF_lADOByfrJc4A_PsyzgyaBdE
     dataType: DATE
